@@ -1,0 +1,9 @@
+.1S.E.E
+.2S.E.E
+.DAS.E.E
+.IAS.E.E
+.12P.E.E
+.1P.E.E
+.2P.E.E
+.DAP.E.E
+.IAP.E.E
