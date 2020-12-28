@@ -69,12 +69,19 @@ class StartPage(tk.Frame):
 class PageOne(tk.Frame):
 
     def translate_eng2alg(self,eng):
-        alg = eng2alg(eng)
+        alg = eng2alg(eng.strip())
+        if type(eng) == type([]):
+            message = '\n'.join([a for a in alg])
+        else:
+            message = alg
+        print(message)
+        
+        special_characters = {'á':'U+00E1','ô':'U+00F4'}
         
         output_label = tk.Label(self, text='Translation:',font=LARGE_FONT)
         output_label.grid(row=10, column=0, sticky='W', padx=10)
         
-        output_text = tk.Label(self, text=alg,
+        output_text = tk.Label(self, text=message,
                                font=LARGE_FONT, wraplength=600)
         output_text.grid(row=12, column=0, sticky='W', padx=10)
         
@@ -100,18 +107,22 @@ class PageOne(tk.Frame):
         
         # add a submit button which calls the translate_eng2alg function
         submit_button = ttk.Button(self, text='Translate!',
-                    command = lambda: self.translate_eng2alg(eng_entry.get('1.0','end').lower()))
+                    command = lambda: self.translate_eng2alg(eng_entry.get('1.0','end')))
         submit_button.grid(row=4,column=3,padx=10)
         
 class PageTwo(tk.Frame):
 
     def translate_alg2eng(self,alg):
         eng = alg2eng(alg.strip())
+        if type(eng) == type([]):
+            message = '\n'.join([e for e in eng])
+        else:
+            message = eng
         
         output_label = tk.Label(self, text='Translation:',font=LARGE_FONT)
         output_label.grid(row=10, column=0, sticky='W', padx=10)
         
-        output_text = tk.Label(self, text=eng,
+        output_text = tk.Label(self, text=message,
                                font=LARGE_FONT, wraplength=600)
         output_text.grid(row=12, column=0, sticky='W', padx=10)
     

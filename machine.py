@@ -45,7 +45,7 @@ del_space = T(' ','')
 add_plus = T('','+')
 
 gloss_syms = newclass('SPDIAN12E.+ ')
-eng_syms = newclass('legvNI()_ ')
+eng_syms = newclass('legdvNIYTW()_- ')
 
 # all segments
 sigmaStar = (closure(vowel|consonant|gloss_syms|eng_syms)).optimize()
@@ -120,6 +120,7 @@ NA = (DASP|IASP).optimize()
 
 # V visible: 1, 2, DA, DN
 V = (oneSP|twoSP|DASP|DNSP|weinc).optimize()
+VA = (oneSP|twoSP|weinc|DASP|IASP).optimize()
 
 # V3 visible 3rd person: DA, DN
 V3 = (DASP|DNSP).optimize()
@@ -156,8 +157,8 @@ threeSP_eng = (D_ni|D_na|I_ni|I_na).optimize()
 oneSP_eng_subj = (A('i')|('we'))
 oneSP_eng_obj = (A('me')|('us'))
 twoSP_eng = (A('you')|A('yall'))
-weinc_eng_subj = A('we_inc')
-weinc_eng_obj = A('us_inc')
+weinc_eng_subj = A('we-inc')
+weinc_eng_obj = A('us-inc')
 prim_obj_engs_subj = (threeSP_eng|oneSP_eng_subj|twoSP_eng|weinc_eng_subj).optimize()
 prim_obj_engs_obj = (threeSP_eng|oneSP_eng_obj|twoSP_eng|weinc_eng_obj).optimize()
 
@@ -212,32 +213,187 @@ for c in config_types:
 ###########################
 print('\nBuilding gloss2alg machine')
 print('----------------------------')
+
+#######
 # stems
-print('generating stems machines')
+#######
 
-# simple_stems = (T('feed','ahsam') | T('sit','apu')|T('see','nám')).optimize()
-simple_stems = (T('feed','ahsam') | T('sit','apu')).optimize()
-simp_stems_in_gloss = simple_stems+del_bound+add_plus+sigmaStar
+class Word:
+    
+    def __init__(self, eng_stem, transitivity, alg_TI_stem=None, 
+                 alg_TA_stem=None, alg_AI_stem=None, alg_II_stem=None, regular=True):
+        self.eng_stem = eng_stem
+        self.transitivity = transitivity
+        self.alg_TA_stem = alg_TA_stem
+        self.alg_TI_stem = alg_TI_stem
+        self.alg_AI_stem = alg_AI_stem
+        self.alg_II_stem = alg_II_stem
+        self.regular = regular
+        self.forms = [self.alg_TA_stem, self.alg_TI_stem, self.alg_AI_stem,
+                self.alg_II_stem]
+        self.num_forms = len([f for f in self.forms if f!=None])
+    
+    def summary(self):
+        print("eng stem:", self.eng_stem)
+        print("transitivity:", self.transitivity)
+        print("number of forms:", self.num_forms)
+        if self.alg_TA_stem:
+            print("TA", self.alg_TA_stem)
+        if self.alg_TI_stem:
+            print("TI", self.alg_TI_stem)
+        if self.alg_AI_stem:
+            print("AI", self.alg_AI_stem)
+        if self.alg_II_stem:
+            print("II", self.alg_II_stem)
+        print('regular:', self.regular)
+        print()
+        
+with open('glossary.txt', 'r', errors='replace') as f:
+    glossary = f.readlines()[1:]
+    
+words = []
 
+def rep_spec(word):
+    ''' replace special characters ô
+    '''
+    new_word = ''
+    for c in word:
+        if c == "ô":
+            new_word += 'ô'
+        else:
+            new_word += c
+    return new_word        
+        
+for line in glossary:
+    eng_stem = None
+    transitivity = None
+    TI = None
+    TA = None
+    AI = None
+    II = None
+    regular = True
+    
+    line = line.strip().split('\t')
+    eng_stem = line[0]
+    transitivity = line[1]
+    if line[-1] == 'irregular':
+        regular = False
+        line.pop(-1)
+    forms = line[2:]
+    it = iter(forms)
+    forms = list(zip(it, it))
+    for tup in forms:
+        if tup[0] == 'TA':
+            TA = tup[1]
+        if tup[0] == 'TI':
+            TI = tup[1]
+        if tup[0] == 'AI':
+            AI = tup[1]
+        if tup[0] == 'II':
+            II = tup[1]
+        if tup[0] == 'TA/TI':
+            TA = tup[1]
+            
+        new_word = Word(eng_stem, transitivity, TI, TA, AI, II, regular)
+    words.append(new_word)
+    
 # stems with irregular alternations
+print('Irregular stems')
+print('---------------')
+irregular_words = [w for w in words if w.regular==False]
+print([w.eng_stem for w in irregular_words])
 mis_context = twoSP+bound+oneSP+bound+F
 mir_mis = ((T('give','mis')+del_bound+add_plus+mis_context)|(T('give','mir')+del_bound+add_plus+complement(mis_context))).optimize()
 irreg_stems = mir_mis
 
+# regular stems
+regular_words = [w for w in words if w.regular==True]
+
+simple_ditrans_words = [w for w in regular_words if w.num_forms==1 and \
+                        w.regular==True and w.transitivity=='ditrans']
+simple_monotrans_words = [w for w in regular_words if w.num_forms==1 and \
+                          w.regular==True and w.transitivity=='monotrans']
+simple_intrans_words = [w for w in regular_words if w.num_forms==1 and \
+                        w.regular==True and w.transitivity=='intrans']
+
+print('\nSimple stems')
+print('------------')
+def build_simple_stems(wordlist, transitivity):
+    temp = zero
+    for w in wordlist:
+        print(w.eng_stem)
+        for f in w.forms:
+            if f:
+                new_T = T(w.eng_stem, f)
+                temp = temp | new_T
+
+    if transitivity == 'ditrans':
+        context = F+bound+F+bound+F
+    elif transitivity == 'monotrans':
+        context = F+bound+F+bound+E
+    elif transitivity == 'intrans':
+        context = F+bound+E+bound+E
+        
+    simple_stems = temp+del_bound+add_plus+context
+    
+    return simple_stems.optimize()
+
+simple_ditrans = build_simple_stems(simple_ditrans_words, "ditrans")
+simple_monotrans = build_simple_stems(simple_monotrans_words, "monotrans")
+simple_intrans = build_simple_stems(simple_intrans_words, "intrans")
+
 # stems that alternate based on animacy of the object
-# what about when A=1,2? for now, giving them the TA version
-def TIvsTA(stem,TI_form,TA_form):
-    TI_context = F+bound+NSP+bound+E
-    TI_TA = (T(stem,TI_form)+del_bound+add_plus+TI_context)|(T(stem,TA_form)+del_bound+add_plus+complement(TI_context))
-    return TI_TA
+print('\nAlternating stems')
+print('-----------------')
+alternating_words = [w for w in regular_words if w.num_forms>1]
 
-see_nam_naw = TIvsTA('see','nám','náw')
-have_waconum_wacon = TIvsTA('have','wacônum','wacôn')
-alternating_stems = (see_nam_naw|have_waconum_wacon).optimize()
+def build_alternating(stem,TI_form,TA_form,AI_form,II_form):
+    print('stem:', stem)
+    if TI_form and TA_form and not AI_form:
+        print('TI and TA')
+        print('TI_form:',TI_form)
+        print('TA_form:',TA_form)
+        TI_context = F+bound+NSP+bound+E
+        TA_context = F+bound+VA+bound+E
+        TI = (T(stem,TI_form)+del_bound+add_plus+TI_context)
+        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
+                    (T(stem,TA_form)+del_bound+add_plus+TA_context)
+        
+    if TI_form and TA_form and AI_form:
+        print('TI and TA and AI')
+        TI_context = F+bound+NSP+bound+E
+        AI_context = VA+bound+E+bound+E
+        TI_AI = (TI_context|AI_context).optimize()
+        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
+                (T(stem,AI_form)+del_bound+add_plus+AI_context)|\
+                (T(stem,TA_form)+del_bound+add_plus+complement(TI_AI))
+        
+    if II_form and AI_form and not TI_form:
+        print('II and AI')
+        print('II:', II_form)
+        print('AI:', AI_form)
+        II_context = NSP+bound+E+bound+E
+        AI_context = VA+bound+E+bound+E
+        alternating = (T(stem,II_form)+del_bound+add_plus+II_context)|\
+                    (T(stem,AI_form)+del_bound+add_plus+AI_context)
+    return alternating.optimize()
 
-stems = (simp_stems_in_gloss|irreg_stems|alternating_stems).optimize()#+del_bound+add_plus
+def build_alternating_stems(wordlist):
+    temp = zero
+    for w in wordlist:
+        print('word:',w.eng_stem)
+        new_T = build_alternating(w.eng_stem,w.alg_TI_stem,w.alg_TA_stem,w.alg_AI_stem,w.alg_II_stem)
+        temp = temp | new_T
+        print()
+    return temp.optimize()
 
+alternating_stems = build_alternating_stems(alternating_words)
+
+stems = (irreg_stems | simple_ditrans | simple_monotrans | simple_intrans | alternating_stems).optimize()
+
+################
 # central suffix
+################
 print('generating central suffix machines')
 
 # N if there are 3 visible args: V V V
@@ -264,7 +420,9 @@ centsuf_M = (complement(centsuf_W3) @ complement(has_V3)).optimize()+T('','+m')
 centsuf = sigmaStar+plus+(centsuf_N|centsuf_W|centsuf_M).optimize()
 centsuf_NM = sigmaStar+plus+(centsuf_N|centsuf_M)
 
+########
 # prefix
+########
 print('generating prefix machines')
 
 # get ku if a 2nd-person arg is involved
@@ -289,7 +447,9 @@ prefix_wu = complement(prefix_none) @ (T('','wu+') + (complement(has_2) @ comple
 #prefix = (prefix_exceptions | (regular_prefix @ (prefix_ku|prefix_nu|prefix_wu))).optimize()
 prefix = (prefix_ku|prefix_nu|prefix_wu|prefix_none).optimize()
 
+######################
 # personal pluralizers
+######################
 print('generating personal pluralizers machines')
 
 # get non if it has 1P or 12P
@@ -317,7 +477,9 @@ pp_none = (pp_all_sg|pp_intrans_3|pp_monotrans_NI).optimize()
 
 personal_plural = (pp_wow | pp_non | pp_none).optimize()
 
+#############
 # theme signs
+#############
 print('generating theme signs machines')
 
 u = T('','u')
@@ -344,7 +506,9 @@ ts_none = (ts_none_1|ts_none_2).optimize()
 
 theme_sign = (sigmaStar+(ts_u|ts_uru|ts_uko|ts_on|ts_none)+sigmaStar).optimize()
 
+##############
 # remove gloss from final form; this includings reducing ++ to +
+##############
 
 to_remove = cross((F+bound+FE+bound+FE).project('input'),'')
 reduce_plusses = cdrewrite(T('++','+'),sigmaStar,sigmaStar,sigmaStar)
@@ -353,9 +517,9 @@ remove_gloss = cdrewrite(cross(to_remove,''), plus, plus, sigmaStar) @ reduce_pl
 # peripheral suffixes: the object pluralizer and the obviative marker
 # which one takes precedence?
 
-
+###################
 # object pluralizer
-# can you get ak or ash when there's an indef somewhere?
+###################
 print('generating object pluralizer machines')
 
 # ak if centsuf is not M (requirements of DAP below takes care of this) AND
@@ -377,8 +541,9 @@ op_none = (complement(op_ak_conditions)@complement(op_ash_conditions))
 
 object_plural = (op_ak|op_ash|op_none).optimize()
 
-
+##################
 # obviative marker
+##################
 print('generating obviative marker machines')
 
 # ah if centsuf is not M AND there are two or more DASP
@@ -399,7 +564,9 @@ peripherals = (obviative_ah | (obviative_none @ object_plural)).optimize()
 # if object_plural takes precedence:
 # peripherals = (object_plural | (complement(object_plural) @ obviative)).optimize()
 
+##############################
 # phonology and spelling rules
+##############################
 print('generating phonology and spelling rules machines')
 
 # first remove plusses
@@ -411,11 +578,10 @@ remove_plusses = cdrewrite(T('+',''),sigmaStar,sigmaStar,sigmaStar)
 intrusive_t = cdrewrite(T('','t'), A('u'), A('a'), sigmaStar)
 
 # insert a u in: mn, mw, wn, ww
-u_bridge = cdrewrite(u,A('m')|A('w'),A('n')|A('w')|A('m'),sigmaStar) # it might be more productive than this?...
+u_bridge = cdrewrite(u,A('m')|A('w')|A('s'),A('n')|A('w')|A('m'),sigmaStar) # it might be more productive than this?...
 # not sure whether ww should be handled as wuw or w; see ku+mir+uko+w+wôw=kumirukowuw vs ku+mir+ô+w+wôw=kumirôw
 
 insertion = (intrusive_t @ u_bridge)
-
 
 no_double_a = cdrewrite(T('áa','a'),sigmaStar,sigmaStar,sigmaStar)
 no_doubles = no_double_a #@ no_double_w
@@ -426,13 +592,12 @@ delete_final_um = cdrewrite(T("um",''),sigmaStar,'[EOS]',sigmaStar)
 
 truncate_final_nonn = cdrewrite(T('ôn',''),'n','[EOS]',sigmaStar)
 truncate_final_wonw = cdrewrite(T('ôw',''),'w','[EOS]',sigmaStar) # need to figure out when wonw and nonw truncation happens
+truncate_final_w = cdrewrite(T('w',''),'t','[EOS]',sigmaStar)
 
 truncation = (truncate_final_nonn @ truncate_final_wonw @ delete_final_a @ delete_final_um).optimize()
 
 # change 'uko+m' to 'uq'
 kom_to_q = cdrewrite(T('ko+m','q'),sigmaStar,'[EOS]',sigmaStar)
-
-ends_in_ukom = ends_in(A('ko+m'))
 truncate_uko = cdrewrite(T('uko','uq')|T('ko+m','q'),sigmaStar,'[EOS]',sigmaStar)
 
 # word final r --> sh
@@ -491,14 +656,21 @@ print('saved alg2gloss.fst')
 print('\nBuilding gloss2eng')
 print('--------------------')
 
+#######
 # stems
+#######
 print('Generating English stems machine')
-eng_stem = (A('give')|A('see')|A('feed')|A('sit')).optimize()
-agree_context = (A('ni')|A('na'))+space+eng_stem
-fix_agreement = cdrewrite(T('','s'),agree_context,sigmaStar,sigmaStar)
-remove_agreement = invert(fix_agreement)
 
+eng_stems_from_glossary = [l.split('\t')[0] for l in glossary]
+def build_eng_stems(words:list):
+    temp = zero
+    for w in words: temp = A(w)|temp
+    return temp.optimize()
+eng_stem = build_eng_stems(eng_stems_from_glossary)
+
+#########
 # subject
+#########
 print('Generating English subject machine')
 subject_filler_it = eng_stem
 subject_filler_mt = eng_stem+space+prim_obj_engs_obj
@@ -515,7 +687,7 @@ sub_1S = T('i ','')+subject_filler+T('','.1S.')
 sub_1P = T('we ','')+subject_filler+T('','.1P.')
 sub_1 = (sub_1S|sub_1P).optimize()
 
-sub_12P = T('we_inc ','')+subject_filler+T('','.12P.')
+sub_12P = T('we-inc ','')+subject_filler+T('','.12P.')
 
 # 3rd person
 sub_DNS = T('that ni ','')+subject_filler+T('','.DNS.')
@@ -531,7 +703,9 @@ sub_3 = (sub_DNS|sub_DNP|sub_INS|sub_INP|sub_DAS|sub_DAP|sub_IAS|sub_IAP).optimi
 
 subject = (sub_2|sub_1|sub_12P|sub_3).optimize()
 
+################
 # primary object
+################
 print('Generating English primary object machine')
 
 prim_obj_filler_mit = bound+F+bound
@@ -560,7 +734,7 @@ prim_obj_1P = (prim_obj_1P_mt|prim_obj_1P_dt).optimize()
 
 prim_obj_1 = (prim_obj_1S|prim_obj_1P).optimize()
 
-prim_obj_12P = eng_stem+space+T('us_inc','')+prim_obj_filler+T('','12P')
+prim_obj_12P = eng_stem+space+T('us-inc','')+prim_obj_filler+T('','12P')
 
 prim_obj_DNS = eng_stem+space+T('that ni','')+prim_obj_filler+T('','DNS')
 prim_obj_DNP = eng_stem+space+T('those nis','')+prim_obj_filler+T('','DNP')
@@ -574,7 +748,9 @@ prim_obj_3 = (prim_obj_DNS|prim_obj_DNP|prim_obj_DAS|prim_obj_DAP|prim_obj_INS|p
 
 prim_obj = (prim_obj_2|prim_obj_1|prim_obj_12P|prim_obj_3|prim_obj_it).optimize()
 
+##################
 # secondary object
+##################
 print('Generating English secondary object machine')
 
 FEFE = bound+FE+bound+FE
@@ -589,17 +765,32 @@ sec_obj_IAS = eng_stem+(T(' a na',''))+FEFE+T('','.IAS')
 sec_obj_IAP = eng_stem+(T(' some nas',''))+FEFE+T('','.IAP')
 sec_obj = (sec_obj_none|sec_obj_DNS|sec_obj_DNP|sec_obj_DAS|sec_obj_DAP|sec_obj_INS|sec_obj_INP|sec_obj_IAS|sec_obj_IAP).optimize()
 
+###########################
 # English output formatting
+###########################
 print('Generating English output formatting machine')
 
+# agreement
+# multiword stems need to have the agreeing 's' on the first word
+split_multiword_stems = cdrewrite(T('_',' '),sigmaStar,sigmaStar-A('inc'),sigmaStar)
+context_stems = project(eng_stem @ split_multiword_stems, "output")
+del_sigmaStar = cross(sigmaStar.project('input'),'')
+no_second_word = ((sigmaStar + T(' ','')+del_sigmaStar)|complement(space)).optimize()
+context_stems = (context_stems @ no_second_word).project('output')
+
+agree_context = (A('ni')|A('na'))+space+context_stems
+agreement = cdrewrite(T('','s'),agree_context,sigmaStar,sigmaStar)
+
+# capitalization
 capital_i = cdrewrite(T('i','I'), '[BOS]', A(' '), sigmaStar)
 capital_ni = cdrewrite(T('ni','NI'), A(' '), A(''), sigmaStar)
 capital_na = cdrewrite(T('na','NA'), A(' '), A(''), sigmaStar)
-#capitalized = ().optimize()
-capital_first = cdrewrite(T('y','Y'),'[BOS]', A(''), sigmaStar)
+capitalized = T('y','Y')|T('t','T')|T('a','A')|T('w','W')|T('s','S')
+capital_first = cdrewrite(capitalized,'[BOS]', A(''), sigmaStar)
 capital = (capital_i @ capital_ni @ capital_na @ capital_first).optimize()
 
-english_output_format = capital + T('','.')
+# put it all together
+english_output_format = split_multiword_stems @ agreement @ (capital + T('','.'))
 
 #############################
 ## Save gloss/eng machines ##
@@ -608,15 +799,15 @@ print('\nGenerating and saving gloss/eng machines')
 print('----------------------------------------')
 
 # machines to translate between gloss and english
-eng2gloss_machine = subject @ prim_obj @ sec_obj
-print('generated eng2gloss_machine')
-eng2gloss_machine.write(lib_path+'eng2gloss.fst')
-print('saved eng2gloss.fst')
-
-gloss2eng_machine = invert(subject @ prim_obj @ sec_obj)
+gloss2eng_machine = (invert(subject @ prim_obj @ sec_obj) @ english_output_format).optimize()
 print('generated gloss2eng_machine')
 gloss2eng_machine.write(lib_path+'gloss2eng.fst')
 print('saved gloss2eng.fst')
+
+eng2gloss_machine = invert(gloss2eng_machine).optimize()
+print('generated eng2gloss_machine')
+eng2gloss_machine.write(lib_path+'eng2gloss.fst')
+print('saved eng2gloss.fst')
 
 #############################
 ## Save alg/eng machines ##
@@ -632,7 +823,7 @@ eng2alg_machine.write(lib_path+'eng2alg.fst')
 print('saved eng2alg.fst')
 
 # Algonquian to English
-alg2eng_machine = invert(eng2alg_machine).optimize()
+alg2eng_machine = (invert(eng2alg_machine)).optimize()
 print('generated alg2eng_machine')
 alg2eng_machine.write(lib_path+'alg2eng.fst')
 print('saved alg2eng.fst')

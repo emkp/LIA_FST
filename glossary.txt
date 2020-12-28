@@ -1,0 +1,8 @@
+eng	trans
+give	ditrans	TA/TI	mir/mis	irregular
+feed	ditrans	TA/TI	ahsam	
+have	monotrans	TA	wacôn	TI	wacônum
+see	monotrans	TA	náw	TI	nám
+eat	monotrans	TA	moh	TI	mic	AI	mitsu
+sit	intrans	AI	apu	
+smell_good	intrans	AI	wuripuqus	II	wurimoquat

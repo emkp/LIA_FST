@@ -31,8 +31,8 @@ def alg2eng(alg):
 eng2alg_machine = Fst.read(path_to_lib+'eng2alg.fst')
     
 def eng2alg(eng):
-    eng = A(eng.lower())
+    eng = A(eng)
     alg = eng @ eng2alg_machine
     return(list_string_set(alg))
     
-print(alg2eng('kumisun'))
+print('Launching GUI')
