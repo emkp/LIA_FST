@@ -1,4 +1,4 @@
-eng	trans
+eng	trans	algs
 give	ditrans	TA/TI	mir/mis	irregular
 feed	ditrans	TA/TI	ahsam	
 have	monotrans	TA	wacôn	TI	wacônum

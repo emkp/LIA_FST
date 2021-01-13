@@ -11,6 +11,12 @@ A script to build the following FST machines:
 from pynini import *
 import csv
 
+############
+# known bugs
+############
+# tkinter won't print words with tthe special characters á or ô
+# "You eat that NI." comes out as "kumicn" but it should come out as "kumicin";
+	# will have to check whether this i-insertion is a productive process.
 
 #########
 # setup #
