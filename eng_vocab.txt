@@ -1,7 +1,0 @@
-give
-feed
-have
-see
-eat
-sit
-smell_good
