@@ -1,8 +1,26 @@
 eng	trans	algs
-give	ditrans	TA/TI	mir/mis	irregular
-feed	ditrans	TA/TI	ahsam	
-have	monotrans	TA	wacôn	TI	wacônum
-see	monotrans	TA	náw	TI	nám
 eat	monotrans	TA	moh	TI	mic	AI	mitsu
-sit	intrans	AI	apu	
+feed	ditrans	TA	ahsam
+get	monotrans	TI	ahtaw
+give	ditrans	TA	mir/mis	TI	mir/mis	irregular
+go	intrans	AI	ô
+grab	monotrans	TA	numun	TI	nimunum
+have	monotrans	TA	wacôn	TI	wacônum
+hear	monotrans	TA	putaw	TI	putam
+help	monotrans	TA	arunamaw
+hold	monotrans	TA	mihkun	TI	mihkunum
+know	monotrans	TA	wáh	TI	wáhto
+learn	monotrans	TI	nuhtuhtaw
+like	monotrans	TA	wurárum	TI	wurárutam
+listen_to	monotrans	TA	kuhkihtaw	TI	kuhkitam
+look_at	monotrans	TA	kuhkinaw	TI	kuhkinam
+pay_attention_to	monotrans	TA	kuhkinahsu	TI	kuhkinahsu
+put_down	monotrans	TA	pon	TI	ponu
+remember	monotrans	TA	mihqônumaw	TI	mihqôtam
+see	monotrans	TA	náw	TI	nám
+sit	intrans	AI	apu
 smell_good	intrans	AI	wuripuqus	II	wurimoquat
+stand	intrans	AI	nipawu
+talk	intrans	AI	kikutok
+talk_to	monotrans	TA	kikitokaw
+tell	ditrans	TA	ur

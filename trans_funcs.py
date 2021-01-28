@@ -20,7 +20,7 @@ def list_string_set(acceptor):
     my_list.sort(key=len)
     return my_list
 
-path_to_lib = "/home/ekp/Documents/SBU_Fall2020/Thesis/Thesis_code/LIA_FST/lib/"
+path_to_lib = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/LIA_FST/lib/"
 alg2eng_machine = Fst.read(path_to_lib+'alg2eng.fst')
 
 def alg2eng(alg):

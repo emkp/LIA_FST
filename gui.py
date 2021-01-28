@@ -67,7 +67,7 @@ class StartPage(tk.Frame):
         button2.place(relx=0.5,rely=0.5,anchor='n')
 
 class PageOne(tk.Frame):
-
+    '''English to Algonquian'''
     def translate_eng2alg(self,eng):
         alg = eng2alg(eng.strip())
         if type(eng) == type([]):
@@ -111,7 +111,7 @@ class PageOne(tk.Frame):
         submit_button.grid(row=4,column=3,padx=10)
         
 class PageTwo(tk.Frame):
-
+    '''Algonquian to English'''
     def translate_alg2eng(self,alg):
         eng = alg2eng(alg.strip())
         if type(eng) == type([]):

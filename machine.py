@@ -1,4 +1,5 @@
 '''
+Last updated on 27 January 2021
 A script to build the following FST machines:
 	gloss2analysis	analysis2gloss
 	analysis2alg	alg2analysis
@@ -7,16 +8,23 @@ A script to build the following FST machines:
 	eng2analysis	analysis2eng
 	eng2alg	alg2eng	
 '''
-#from prettytable import PrettyTable
 from pynini import *
 import csv
 
+path_to_project = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/drafting_210125/"
+# need to handle file paths better
+
 ############
-# known bugs
+# known bugs/ things to check
 ############
-# tkinter won't print words with tthe special characters á or ô
-# "You eat that NI." comes out as "kumicn" but it should come out as "kumicin";
-	# will have to check whether this i-insertion is a productive process.
+# tkinter won't print words with the special characters á or ô
+# 'uru' should be 'ur'
+# check third-person 'go' forms are correct
+	# 'A NA goes.' == 'ôw'
+# move #Getting the generated configurations# and #Getting attested forms from data# sections to new file
+# question about the N central suffix's context:
+	# V DN(SP) ?? or F DN(SP) going with F DN(SP) for now
+
 
 #########
 # setup #
@@ -40,9 +48,8 @@ def newclass(letters:str):
     return temp.optimize()
 
 vowel = newclass('auáiôo')
-consonant = newclass('ktpcwynmsʃhrq')
+consonant = newclass('ktpcwynmshrq')
 
-bound_del = T('.','')
 del_bound = T('.','') # need to delete one of these
 bound = A('.')
 plus = A('+')
@@ -51,7 +58,7 @@ del_space = T(' ','')
 add_plus = T('','+')
 
 gloss_syms = newclass('SPDIAN12E.+ ')
-eng_syms = newclass('legdvNIYTW()_- ')
+eng_syms = newclass('bdefgjlvxzNIYTW()_- ')
 
 # all segments
 sigmaStar = (closure(vowel|consonant|gloss_syms|eng_syms)).optimize()
@@ -102,7 +109,6 @@ IASP = (IAS|IAP).optimize()	# indefinite animate singular or plural
 INS = IN+S			# indefinite inanimate singular
 INP = IN+P			# indefinite inanimate plural
 INSP = (INS|INP).optimize()	# indefinite inanimate singular or plural
-NSP = (DNSP|INSP).optimize()	# definite or indefinite inanimate singular or plural
 
 
 # F any argument but empty (F for Filled)
@@ -126,6 +132,8 @@ NA = (DASP|IASP).optimize()
 
 # V visible: 1, 2, DA, DN
 V = (oneSP|twoSP|DASP|DNSP|weinc).optimize()
+
+# VA visible agent
 VA = (oneSP|twoSP|weinc|DASP|IASP).optimize()
 
 # V3 visible 3rd person: DA, DN
@@ -136,6 +144,14 @@ IV3 = (IASP|INSP).optimize()
     
 # X invisible: IA, IN, E
 X = (IASP|INSP|E).optimize()
+
+# Ag Agent: DASP, IASP, 1SP, 2SP (everything but N)
+Ag = (NA|ym)
+
+# reflexive constructions
+def has_two(machine):
+    return sigmaStar+machine+sigmaStar+machine+sigmaStar
+reflexive = has_two(one)|has_two(two)
 
 #####################################
 ### shortcut transducers: English ###
@@ -173,8 +189,8 @@ prim_obj_engs_obj = (threeSP_eng|oneSP_eng_obj|twoSP_eng|weinc_eng_obj).optimize
 ######################################
 # should this be in its own file?
 
-path_to_project = "/home/ekp/Documents/SBU_Fall2020/Thesis/Thesis_code/LIA_FST/"
-eng_vocab_file = open(path_to_project+"eng_vocab.txt")
+path_to_project = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/LIA_FST/"
+'''eng_vocab_file = open(path_to_project+"eng_vocab.txt")
 eng_vocab = eng_vocab_file.readlines()
 
 forms_from_data = {}
@@ -196,7 +212,7 @@ for e in eng_vocab:
                 else:
                     alg_form += 'ô'
             from_data_dict[x[1]] = alg_form
-    forms_from_data[e] = from_data_dict
+    forms_from_data[e] = from_data_dict'''
 #print(forms_from_data)
 
 ##########################################
@@ -206,13 +222,13 @@ for e in eng_vocab:
 
 # config_types_dict is a dictionary with names of transitivity types as keys
 # and lists of possible configurations for that kind of transitivity as values
-config_types = ['ditrans', 'monotrans', 'intrans']
+'''config_types = ['ditrans', 'monotrans', 'intrans']
 config_types_dict = {}
 for c in config_types:
     c_path = path_to_project+'configs/'+c+'_configs.txt'
     configs_file = open(c_path)
     configs = configs_file.readlines()
-    config_types_dict[c] = configs
+    config_types_dict[c] = configs'''
 
 ###########################
 ##### Build gloss2alg #####
@@ -225,7 +241,27 @@ print('----------------------------')
 #######
 
 class Word:
+    '''
+    Class to store a stem from glossary.txt and its information
     
+    Attributes
+    ----------
+    eng_stem        the English stem
+    transitivity    intransitive, monotransitive, ditransitive
+    alg_TA_stem     the TA stem
+    alg_TI_stem     the TI stem
+    alg_AI_stem     the AI stem
+    alg_II_stem     the II stem
+    regular         regular or irregular, referring to stem-internal sound changes
+    forms           a list containing the TA, TI, AI, II stems, in that order
+    num_forms       the number of forms available for this word
+    
+    Methods
+    ------
+    summary         prints a message about the word's transitivity,
+                    regularity, and Eng and Alg forms,
+                    for checking whether they were read in correctly
+    '''
     def __init__(self, eng_stem, transitivity, alg_TI_stem=None, 
                  alg_TA_stem=None, alg_AI_stem=None, alg_II_stem=None, regular=True):
         self.eng_stem = eng_stem
@@ -257,19 +293,9 @@ class Word:
 with open('glossary.txt', 'r', errors='replace') as f:
     glossary = f.readlines()[1:]
     
-words = []
-
-def rep_spec(word):
-    ''' replace special characters ô
-    '''
-    new_word = ''
-    for c in word:
-        if c == "ô":
-            new_word += 'ô'
-        else:
-            new_word += c
-    return new_word        
+words = []       
         
+# read in words from the glossary
 for line in glossary:
     eng_stem = None
     transitivity = None
@@ -297,7 +323,7 @@ for line in glossary:
             AI = tup[1]
         if tup[0] == 'II':
             II = tup[1]
-        if tup[0] == 'TA/TI':
+        if tup[0] == 'TA/TI': # may change this later
             TA = tup[1]
             
         new_word = Word(eng_stem, transitivity, TI, TA, AI, II, regular)
@@ -308,8 +334,9 @@ print('Irregular stems')
 print('---------------')
 irregular_words = [w for w in words if w.regular==False]
 print([w.eng_stem for w in irregular_words])
-mis_context = twoSP+bound+oneSP+bound+F
-mir_mis = ((T('give','mis')+del_bound+add_plus+mis_context)|(T('give','mir')+del_bound+add_plus+complement(mis_context))).optimize()
+mis_context = (twoSP+bound+oneSP+bound+F) # automatically rules out reflexives
+mir_context = complement(mis_context) @ (Ag+bound+Ag+bound+F) @ complement(reflexive)
+mir_mis = ((T('give','mis')+del_bound+add_plus+mis_context)|(T('give','mir')+del_bound+add_plus+mir_context)).optimize()
 irreg_stems = mir_mis
 
 # regular stems
@@ -317,10 +344,14 @@ regular_words = [w for w in words if w.regular==True]
 
 simple_ditrans_words = [w for w in regular_words if w.num_forms==1 and \
                         w.regular==True and w.transitivity=='ditrans']
-simple_monotrans_words = [w for w in regular_words if w.num_forms==1 and \
-                          w.regular==True and w.transitivity=='monotrans']
-simple_intrans_words = [w for w in regular_words if w.num_forms==1 and \
-                        w.regular==True and w.transitivity=='intrans']
+simple_monotrans_TA_words = [w for w in regular_words if w.num_forms==1 and \
+                          w.regular==True and w.transitivity=='monotrans' and w.alg_TA_stem]
+simple_monotrans_TI_words = [w for w in regular_words if w.num_forms==1 and \
+                          w.regular==True and w.transitivity=='monotrans' and w.alg_TI_stem]
+simple_intrans_AI_words = [w for w in regular_words if w.num_forms==1 and \
+                        w.regular==True and w.transitivity=='intrans' and w.alg_AI_stem]
+simple_intrans_II_words = [w for w in regular_words if w.num_forms==1 and \
+                        w.regular==True and w.transitivity=='intrans' and w.alg_II_stem]
 
 print('\nSimple stems')
 print('------------')
@@ -334,19 +365,27 @@ def build_simple_stems(wordlist, transitivity):
                 temp = temp | new_T
 
     if transitivity == 'ditrans':
-        context = F+bound+F+bound+F
-    elif transitivity == 'monotrans':
-        context = F+bound+F+bound+E
-    elif transitivity == 'intrans':
-        context = F+bound+E+bound+E
+        context = (Ag+bound+Ag+bound+F) @ complement(reflexive)
+    elif transitivity == 'TA':
+        context = (Ag+bound+Ag+bound+E) @ complement(reflexive)
+    elif transitivity == 'TI':
+        context = Ag+bound+NI+bound+E
+    elif transitivity == 'AI':
+        context = Ag+bound+E+bound+E
+    elif transitivity == 'II':
+        context = NI+bound+E+bound+E
         
     simple_stems = temp+del_bound+add_plus+context
     
     return simple_stems.optimize()
 
 simple_ditrans = build_simple_stems(simple_ditrans_words, "ditrans")
-simple_monotrans = build_simple_stems(simple_monotrans_words, "monotrans")
-simple_intrans = build_simple_stems(simple_intrans_words, "intrans")
+simple_monotrans_TA = build_simple_stems(simple_monotrans_TA_words, "TA")
+simple_monotrans_TI = build_simple_stems(simple_monotrans_TI_words, "TI")
+simple_monotrans = (simple_monotrans_TA|simple_monotrans_TI)
+simple_intrans_AI = build_simple_stems(simple_intrans_AI_words, "AI")
+simple_intrans_II = build_simple_stems(simple_intrans_II_words, "II")
+simple_intrans = (simple_intrans_AI|simple_intrans_II)
 
 # stems that alternate based on animacy of the object
 print('\nAlternating stems')
@@ -354,34 +393,39 @@ print('-----------------')
 alternating_words = [w for w in regular_words if w.num_forms>1]
 
 def build_alternating(stem,TI_form,TA_form,AI_form,II_form):
+    # !!! this will need to be fixed if there are any ditransitive
+    # verbs with other, non-ditransitive forms
     print('stem:', stem)
-    if TI_form and TA_form and not AI_form:
-        print('TI and TA')
-        print('TI_form:',TI_form)
+    
+    TI_context = Ag+bound+NI+bound+E
+    TA_context = (Ag+bound+Ag+bound+E) @ complement(reflexive)
+    AI_context = Ag+bound+E+bound+E
+    II_context = NI+bound+E+bound+E
+    
+    if TA_form and TI_form and AI_form:
+        print('TA and TI and AI')
         print('TA_form:',TA_form)
-        TI_context = F+bound+NSP+bound+E
-        TA_context = F+bound+VA+bound+E
+        print('TI_form:',TI_form)
+        print('AI_form:',AI_form)
+        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
+                (T(stem,AI_form)+del_bound+add_plus+AI_context)|\
+                (T(stem,TA_form)+del_bound+add_plus+TA_context)
+    
+    elif TA_form and TI_form and not AI_form:
+        print('TA and TI')
+        print('TA_form:',TA_form)
+        print('TI_form:',TI_form)
         TI = (T(stem,TI_form)+del_bound+add_plus+TI_context)
         alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
                     (T(stem,TA_form)+del_bound+add_plus+TA_context)
         
-    if TI_form and TA_form and AI_form:
-        print('TI and TA and AI')
-        TI_context = F+bound+NSP+bound+E
-        AI_context = VA+bound+E+bound+E
-        TI_AI = (TI_context|AI_context).optimize()
-        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
-                (T(stem,AI_form)+del_bound+add_plus+AI_context)|\
-                (T(stem,TA_form)+del_bound+add_plus+complement(TI_AI))
-        
-    if II_form and AI_form and not TI_form:
-        print('II and AI')
-        print('II:', II_form)
+    elif AI_form and II_form:
+        print('AI and II')
         print('AI:', AI_form)
-        II_context = NSP+bound+E+bound+E
-        AI_context = VA+bound+E+bound+E
+        print('II:', II_form)
         alternating = (T(stem,II_form)+del_bound+add_plus+II_context)|\
                     (T(stem,AI_form)+del_bound+add_plus+AI_context)
+        
     return alternating.optimize()
 
 def build_alternating_stems(wordlist):
@@ -424,7 +468,6 @@ has_V3 = has(V3)
 centsuf_M = (complement(centsuf_W3) @ complement(has_V3)).optimize()+T('','+m')
 
 centsuf = sigmaStar+plus+(centsuf_N|centsuf_W|centsuf_M).optimize()
-centsuf_NM = sigmaStar+plus+(centsuf_N|centsuf_M)
 
 ########
 # prefix
@@ -586,8 +629,9 @@ intrusive_t = cdrewrite(T('','t'), A('u'), A('a'), sigmaStar)
 # insert a u in: mn, mw, wn, ww
 u_bridge = cdrewrite(u,A('m')|A('w')|A('s'),A('n')|A('w')|A('m'),sigmaStar) # it might be more productive than this?...
 # not sure whether ww should be handled as wuw or w; see ku+mir+uko+w+wôw=kumirukowuw vs ku+mir+ô+w+wôw=kumirôw
+i_bridge = cdrewrite(T('','i'),A('c'),A('n'),sigmaStar)
 
-insertion = (intrusive_t @ u_bridge)
+insertion = (intrusive_t @ u_bridge @ i_bridge)
 
 no_double_a = cdrewrite(T('áa','a'),sigmaStar,sigmaStar,sigmaStar)
 no_doubles = no_double_a #@ no_double_w
@@ -785,7 +829,9 @@ no_second_word = ((sigmaStar + T(' ','')+del_sigmaStar)|complement(space)).optim
 context_stems = (context_stems @ no_second_word).project('output')
 
 agree_context = (A('ni')|A('na'))+space+context_stems
-agreement = cdrewrite(T('','s'),agree_context,sigmaStar,sigmaStar)
+agreement_s = cdrewrite(T('','s'),agree_context,sigmaStar,sigmaStar)
+irregular_eng_agreement = cdrewrite(T('gos','goes'),sigmaStar,sigmaStar,sigmaStar)
+agreement = agreement_s @ irregular_eng_agreement
 
 # capitalization
 capital_i = cdrewrite(T('i','I'), '[BOS]', A(' '), sigmaStar)
