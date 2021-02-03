@@ -1,24 +1,25 @@
 '''
-Last updated on 27 January 2021
+Last updated on 3 February 2021
 A script to build the following FST machines:
 	gloss2analysis	analysis2gloss
 	analysis2alg	alg2analysis
 	gloss2alg	alg2gloss
 	gloss2eng	eng2gloss
 	eng2analysis	analysis2eng
-	eng2alg	alg2eng	
+	eng2alg	alg2eng
+And to generate entries.csv, a csv file storing every available
+Algonquian-English translation pair along with their associated
+glosses and anaylzed forms.	
 '''
 from pynini import *
+from datetime import datetime
+import pandas as pd
 import csv
-
-path_to_project = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/drafting_210125/"
-# need to handle file paths better
 
 ############
 # known bugs/ things to check
 ############
 # tkinter won't print words with the special characters á or ô
-# 'uru' should be 'ur'
 # check third-person 'go' forms are correct
 	# 'A NA goes.' == 'ôw'
 # move #Getting the generated configurations# and #Getting attested forms from data# sections to new file
@@ -30,205 +31,160 @@ path_to_project = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/dr
 # setup #
 #########
 
-def A(s: str) -> Fst:
-    return acceptor(s, token_type="utf8")
+def A(s):
+    return acceptor(s, token_type='utf8')
 
-def T(upper: str, lower: str) -> Fst:
-    return cross(A(upper), A(lower))
+def T(upper, lower):
+    return cross(A(upper),A(lower))
 
-a = A("a")
+a = A('a')
 zero = a-a
 zero.optimize()
 
-# some natural classes
-
-def newclass(letters:str):
+def newclass(letters):
+    ''' returns (c1|c2|c3|...) '''
     temp = zero
-    for x in letters: temp = A(x) | temp
+    for x in letters: temp = A(x)|temp
     return temp.optimize()
 
-vowel = newclass('auáiôo')
-consonant = newclass('ktpcwynmshrq')
-
-del_bound = T('.','') # need to delete one of these
 bound = A('.')
-plus = A('+')
+del_bound = T('.','')
+add_bound = T('','.')
 space = A(' ')
 del_space = T(' ','')
+add_space = T('',' ')
+plus = A('+')
 add_plus = T('','+')
+slash = A('/')
 
-gloss_syms = newclass('SPDIAN12E.+ ')
-eng_syms = newclass('bdefgjlvxzNIYTW()_- ')
+alg_vowel_chars = 'auáiôo'
+alg_consonant_chars = 'ktpcwynmshrq'
+alg_chars = alg_vowel_chars+alg_consonant_chars
+eng_vowel_chars = 'aeiou'
+eng_consonant_chars = 'bcdfghjklmnpqrstvwxyz'+'-_'
+eng_capitals = 'IWYTA'
+eng_chars = eng_vowel_chars+eng_consonant_chars
+gloss_chars = 'SPDIAN12ETCRBOG.+/ '
 
-# all segments
-sigmaStar = (closure(vowel|consonant|gloss_syms|eng_syms)).optimize()
+alg_vowel = newclass(alg_vowel_chars)
+alg_consonant = newclass(alg_consonant_chars)
+alg_con_or_vow = alg_vowel|alg_consonant
+eng_vowel = newclass(eng_vowel_chars)
+eng_consonant = newclass(eng_consonant_chars)
+gloss_class = newclass(gloss_chars)
+
+other_morphemes = closure(newclass(alg_chars+'+'))
+other_eng  = closure(newclass(eng_chars+' '))
+
+sigmaStar = (closure(alg_vowel|alg_consonant|eng_vowel|eng_consonant|gloss_class)).optimize()
+sigmaStar_w_capitals = (closure(alg_vowel|alg_consonant|eng_vowel|eng_consonant|gloss_class|newclass(eng_capitals)))
 
 def complement(machine):
-    return difference(sigmaStar, machine)
-    
-def has(machine):
-    return sigmaStar+machine+sigmaStar
+    return (difference(sigmaStar, machine)).optimize()
 
+def has(machine):
+    return (sigmaStar+machine+sigmaStar).optimize()
+
+def not_has(machine):
+    return (complement(has(machine))).optimize()
+
+def has_two(machine):
+    return (sigmaStar+machine+sigmaStar+machine+sigmaStar).optimize()
+
+def has_both(first,second):
+    first_first = sigmaStar+first+sigmaStar+second+sigmaStar
+    second_first = sigmaStar+second+sigmaStar+first+sigmaStar
+    return (first_first|second_first).optimize()
+    
 ######################################
 ## shortcut transducers: Algonquian ##
 ######################################
 
-S = A('S') # S singular
-P = A('P') # P plural
-D = A('D') # D definite
-I = A('I') # I indefinite
-An = A('A') # A animate 3rd person
-N = A('N') # N inanimate 3rd person
-one = A('1') # 1 first person
-two = A('2') # 2 second person
-E = A('E') # E empty
+E = A('E')       # E empty
+one = A('1')     # 1 first person
+two = A('2')     # 2 second person
+S = A('S')       # S singular
+P = A('P')       # P plural
+D = A('D')       # D definite
+I = A('I')       # I indefinite
+An = A('A')      # A animate 3rd person
+N = A('N')       # N inanimate 3rd person
 
-weinc = A('12P') # we inclusive
+oneS = one+S     # 1st person singular
+oneP = one+P     # 1st person plural exclusive
+oneSP = (oneS|oneP).optimize() # 1st person singular or plural (not including we-inc)
+twoS = two+S     # 2nd person singular
+twoP = two+P     # 2nd person plural
+twoSP = (twoS|twoP).optimize() # 2nd person singular or plural (also catches we-inc)
+weinc = A('12P') # 1st person plural inclusive
 
-oneS = one+S 			# singular 1st person
-oneP = one+P 			# plural 1st person
-oneSP = (oneS|oneP).optimize() # 1st person singular or plural
-twoS = two+S			# singular 2nd person
-twoP = two+P 			# plural 2nd person
-twoSP = (twoS|twoP).optimize() # 2nd person singular or plural
+ym = (oneSP|twoSP|weinc).optimize() # speech-act participants only
 
 DA = D+An # definite animate 3rd person
 DN = D+N  # definite inanimate 3rd person
 IA = I+An # indefinite animate 3rd person
 IN = I+N # indefinite inanimate 3rd person
 
-DAS = DA+S			# definite animate singular
-DAP = DA+P			# definite animate plural
-DASP = (DAS|DAP).optimize()	# definite animate singular or plural
-DNS = DN+S			# definite inanimate singular
-DNP = DN+P			# definite inanimate plural
-DNSP = (DNS|DNP).optimize()	# definite inanimate singular or plural
-IAS = IA+S			# indefinite animate singular
-IAP = IA+P			# indefinite animate plural
-IASP = (IAS|IAP).optimize()	# indefinite animate singular or plural
-INS = IN+S			# indefinite inanimate singular
-INP = IN+P			# indefinite inanimate plural
-INSP = (INS|INP).optimize()	# indefinite inanimate singular or plural
+DAS = DA+S          # definite animate singular
+DAP = DA+P          # definite animate plural
+DASP = (DAS|DAP).optimize() # definite animate singular or plural
+DNS = DN+S          # definite inanimate singular
+DNP = DN+P          # definite inanimate plural
+DNSP = (DNS|DNP).optimize() # definite inanimate singular or plural
+IAS = IA+S          # indefinite animate singular
+IAP = IA+P          # indefinite animate plural
+IASP = (IAS|IAP).optimize() # indefinite animate singular or plural
+INS = IN+S          # indefinite inanimate singular
+INP = IN+P          # indefinite inanimate plural
+INSP = (INS|INP).optimize() # indefinite inanimate singular or plural
 
-
-# F any argument but empty (F for Filled)
-F =  (oneSP|twoSP|DASP|DNSP|IASP|INSP|weinc).optimize()
-
-# FE any argument including empty
-FE = (F|E).optimize()
-    
-# three third person
-threeSP = (DASP|DNSP|IASP|INSP).optimize()
+threeS = (DAS|DNS|IAS|INS).optimize()
 threeP = (DAP|DNP|IAP|INP).optimize()
+threeSP = (threeS|threeP).optimize()
 
-# ym you and me only: 1S, 1P, 2S, 2P, 12P
-ym = (oneSP|twoSP|weinc).optimize()
-
-# NI inanimate 3rd person: DNS, DNP, INS, INP
 NI = (DNSP|INSP).optimize()
-
-# NA animate 3rd person: DAS, DAP, IAS, IAP
 NA = (DASP|IASP).optimize()
 
-# V visible: 1, 2, DA, DN
-V = (oneSP|twoSP|DASP|DNSP|weinc).optimize()
+V = (ym|DASP|DNSP).optimize() # visible arguments; speech act participants and definite third-person
+Ag = (ym|NA).optimize() # "active"/agentive visible arguments; speech act participants and definite animate third-person
+V3 = (DASP|DNSP).optimize() # visible 3rd-person arguments; definite third-person (animate and inanimate)
 
-# VA visible agent
-VA = (oneSP|twoSP|weinc|DASP|IASP).optimize()
+X = (IASP|INSP|E).optimize() # invisible
+X3 = (IASP|INSP).optimize() # invisible third person; i.e. indefinite third person
 
-# V3 visible 3rd person: DA, DN
-V3 = (DASP|DNSP).optimize()
+F = (oneSP|twoSP|weinc|DASP|DNSP|IASP|INSP).optimize() # "filled"; any non-empty argument
+FE = (F|E).optimize() # any argument including empty
 
-# IV3 invisible 3rd person: IAS, IAP, INS, INP
-IV3 = (IASP|INSP).optimize()
-    
-# X invisible: IA, IN, E
-X = (IASP|INSP|E).optimize()
-
-# Ag Agent: DASP, IASP, 1SP, 2SP (everything but N)
-Ag = (NA|ym)
-
-# reflexive constructions
-def has_two(machine):
-    return sigmaStar+machine+sigmaStar+machine+sigmaStar
 reflexive = has_two(one)|has_two(two)
+
+positive = A('O')
+negative = A('G')
+polarity = positive|negative
+
+any_config = (((F+bound+F+bound+FE)|(F+bound+E+bound+E))+slash+polarity) @ complement(reflexive)
 
 #####################################
 ### shortcut transducers: English ###
 #####################################
 
-# shortcut transducers for English
-that_ni = A('that ni')
-those_nis = A('those nis')
-D_ni = (that_ni|those_nis)
-
-that_na = A('that na')
-those_nas = A('those nas')
-D_na = (that_na|those_nas)
-
-a_ni = A('a ni')
-some_nis = A('some nis')
-I_ni = (a_ni|some_nis)
-
-a_na = A('a na')
-some_nas = A('some nas')
-I_na = (a_na|some_nas)
-
-threeSP_eng = (D_ni|D_na|I_ni|I_na).optimize()
-
-oneSP_eng_subj = (A('i')|('we'))
-oneSP_eng_obj = (A('me')|('us'))
-twoSP_eng = (A('you')|A('yall'))
-weinc_eng_subj = A('we-inc')
-weinc_eng_obj = A('us-inc')
-prim_obj_engs_subj = (threeSP_eng|oneSP_eng_subj|twoSP_eng|weinc_eng_subj).optimize()
-prim_obj_engs_obj = (threeSP_eng|oneSP_eng_obj|twoSP_eng|weinc_eng_obj).optimize()
-
-######################################
-## Getting attested forms from data ##
-######################################
-# should this be in its own file?
-
-path_to_project = "/home/ekp/Documents/School/SBU_Fall2020/Thesis/Thesis_code/LIA_FST/"
-'''eng_vocab_file = open(path_to_project+"eng_vocab.txt")
-eng_vocab = eng_vocab_file.readlines()
-
-forms_from_data = {}
-for e in eng_vocab:
-    e = e.strip()
-    e_path = path_to_project+'forms_from_data/'+e+'.csv'
-    with open(e_path, newline='') as csvfile:
-        csvreader = csv.reader(csvfile,delimiter=',')
-        from_data = []
-        for row in csvreader:
-            from_data.append(tuple(row))
-        from_data = from_data[1:]
-        from_data_dict = {}
-        for x in from_data:
-            alg_form = ''
-            for c in x[0]:
-                if c != 'ȏ':
-                    alg_form += c
-                else:
-                    alg_form += 'ô'
-            from_data_dict[x[1]] = alg_form
-    forms_from_data[e] = from_data_dict'''
-#print(forms_from_data)
-
-##########################################
-## Getting the generated configurations ##
-##########################################
-# should this be in its own file?
-
-# config_types_dict is a dictionary with names of transitivity types as keys
-# and lists of possible configurations for that kind of transitivity as values
-'''config_types = ['ditrans', 'monotrans', 'intrans']
-config_types_dict = {}
-for c in config_types:
-    c_path = path_to_project+'configs/'+c+'_configs.txt'
-    configs_file = open(c_path)
-    configs = configs_file.readlines()
-    config_types_dict[c] = configs'''
+eng_I = A('i')
+eng_we = A('we')
+eng_weinc = A('we-inc')
+eng_you = A('you')
+eng_yall = A('yall')
+eng_that_na = A('that na')
+eng_those_nas = A('those nas')
+eng_that_ni = A('that ni')
+eng_those_nis = A('those nis')
+eng_a_na = A('a na')
+eng_some_nas = A('some nas')
+eng_a_ni = A('a ni')
+eng_some_nis = A('some nis')
+are_subjects = (eng_you|eng_yall|eng_we|eng_weinc|eng_those_nas|eng_some_nas).optimize()
+threeSg_subjects = (eng_that_na|eng_a_na)
+possible_subjects = (eng_I|eng_we|eng_weinc|eng_you|eng_yall|
+                     eng_that_na|eng_those_nas|eng_that_ni|eng_those_nis|
+                     eng_a_na|eng_some_nas|eng_a_ni|eng_some_nis).optimize()
 
 ###########################
 ##### Build gloss2alg #####
@@ -239,7 +195,7 @@ print('----------------------------')
 #######
 # stems
 #######
-
+    
 class Word:
     '''
     Class to store a stem from glossary.txt and its information
@@ -258,381 +214,306 @@ class Word:
     
     Methods
     ------
-    summary         prints a message about the word's transitivity,
-                    regularity, and Eng and Alg forms,
+    summary         prints a message about the word's transitivity, regularity, and Eng and Alg forms,
                     for checking whether they were read in correctly
     '''
-    def __init__(self, eng_stem, transitivity, alg_TI_stem=None, 
-                 alg_TA_stem=None, alg_AI_stem=None, alg_II_stem=None, regular=True):
+    def __init__(self, eng_stem, transitivity, TA=None, 
+                 TI=None, AI=None, II=None, regular_spelling=True, regular_order=True):
         self.eng_stem = eng_stem
         self.transitivity = transitivity
-        self.alg_TA_stem = alg_TA_stem
-        self.alg_TI_stem = alg_TI_stem
-        self.alg_AI_stem = alg_AI_stem
-        self.alg_II_stem = alg_II_stem
-        self.regular = regular
-        self.forms = [self.alg_TA_stem, self.alg_TI_stem, self.alg_AI_stem,
-                self.alg_II_stem]
+        self.TA = TA
+        self.TI = TI
+        self.AI = AI
+        self.II = II
+        self.regular_spelling = regular_spelling
+        self.regular_order = regular_order
+        self.forms = [self.TA, self.TI, self.AI, self.II]
         self.num_forms = len([f for f in self.forms if f!=None])
+        
     
     def summary(self):
         print("eng stem:", self.eng_stem)
         print("transitivity:", self.transitivity)
         print("number of forms:", self.num_forms)
-        if self.alg_TA_stem:
-            print("TA", self.alg_TA_stem)
-        if self.alg_TI_stem:
-            print("TI", self.alg_TI_stem)
-        if self.alg_AI_stem:
-            print("AI", self.alg_AI_stem)
-        if self.alg_II_stem:
-            print("II", self.alg_II_stem)
-        print('regular:', self.regular)
+        if self.TA:
+            print("TA", self.TA)
+        if self.TI:
+            print("TI", self.TI)
+        if self.AI:
+            print("AI", self.AI)
+        if self.II:
+            print("II", self.II)
+        print('regular_spelling:', self.regular_spelling)
+        print('regular_order:', self.regular_order)
         print()
-        
-with open('glossary.txt', 'r', errors='replace') as f:
-    glossary = f.readlines()[1:]
+
+with open('./glossary.csv', newline='') as csvfile:
+    glossaryreader = csv.reader(csvfile, delimiter=',')
+    glossary_rows = [r for r in glossaryreader]
+
+glossary_words = []
+for row in glossary_rows[1:]:
+    eng_stem = row[0]
+    transitivity = row[1]
+    TA = row[2] if row[2]!='-' else None
+    TI = row[3] if row[3]!='-' else None
+    AI = row[4] if row[4]!='-' else None
+    II = row[5] if row[5]!='-' else None
+    regular_spelling = False if row[6]=='irregular' else True
+    regular_order = False if row[7]=='irregular' else True
+    glossary_words.append(Word(eng_stem,transitivity,TA,TI,AI,II,
+                               regular_spelling,regular_order))
     
-words = []       
-        
-# read in words from the glossary
-for line in glossary:
-    eng_stem = None
-    transitivity = None
-    TI = None
-    TA = None
-    AI = None
-    II = None
-    regular = True
-    
-    line = line.strip().split('\t')
-    eng_stem = line[0]
-    transitivity = line[1]
-    if line[-1] == 'irregular':
-        regular = False
-        line.pop(-1)
-    forms = line[2:]
-    it = iter(forms)
-    forms = list(zip(it, it))
-    for tup in forms:
-        if tup[0] == 'TA':
-            TA = tup[1]
-        if tup[0] == 'TI':
-            TI = tup[1]
-        if tup[0] == 'AI':
-            AI = tup[1]
-        if tup[0] == 'II':
-            II = tup[1]
-        if tup[0] == 'TA/TI': # may change this later
-            TA = tup[1]
-            
-        new_word = Word(eng_stem, transitivity, TI, TA, AI, II, regular)
-    words.append(new_word)
-    
-# stems with irregular alternations
-print('Irregular stems')
-print('---------------')
-irregular_words = [w for w in words if w.regular==False]
-print([w.eng_stem for w in irregular_words])
-mis_context = (twoSP+bound+oneSP+bound+F) # automatically rules out reflexives
-mir_context = complement(mis_context) @ (Ag+bound+Ag+bound+F) @ complement(reflexive)
-mir_mis = ((T('give','mis')+del_bound+add_plus+mis_context)|(T('give','mir')+del_bound+add_plus+mir_context)).optimize()
-irreg_stems = mir_mis
-
-# regular stems
-regular_words = [w for w in words if w.regular==True]
-
-simple_ditrans_words = [w for w in regular_words if w.num_forms==1 and \
-                        w.regular==True and w.transitivity=='ditrans']
-simple_monotrans_TA_words = [w for w in regular_words if w.num_forms==1 and \
-                          w.regular==True and w.transitivity=='monotrans' and w.alg_TA_stem]
-simple_monotrans_TI_words = [w for w in regular_words if w.num_forms==1 and \
-                          w.regular==True and w.transitivity=='monotrans' and w.alg_TI_stem]
-simple_intrans_AI_words = [w for w in regular_words if w.num_forms==1 and \
-                        w.regular==True and w.transitivity=='intrans' and w.alg_AI_stem]
-simple_intrans_II_words = [w for w in regular_words if w.num_forms==1 and \
-                        w.regular==True and w.transitivity=='intrans' and w.alg_II_stem]
-
-print('\nSimple stems')
-print('------------')
-def build_simple_stems(wordlist, transitivity):
-    temp = zero
-    for w in wordlist:
-        print(w.eng_stem)
-        for f in w.forms:
-            if f:
-                new_T = T(w.eng_stem, f)
-                temp = temp | new_T
-
-    if transitivity == 'ditrans':
-        context = (Ag+bound+Ag+bound+F) @ complement(reflexive)
-    elif transitivity == 'TA':
-        context = (Ag+bound+Ag+bound+E) @ complement(reflexive)
-    elif transitivity == 'TI':
-        context = Ag+bound+NI+bound+E
-    elif transitivity == 'AI':
-        context = Ag+bound+E+bound+E
-    elif transitivity == 'II':
-        context = NI+bound+E+bound+E
-        
-    simple_stems = temp+del_bound+add_plus+context
-    
-    return simple_stems.optimize()
-
-simple_ditrans = build_simple_stems(simple_ditrans_words, "ditrans")
-simple_monotrans_TA = build_simple_stems(simple_monotrans_TA_words, "TA")
-simple_monotrans_TI = build_simple_stems(simple_monotrans_TI_words, "TI")
-simple_monotrans = (simple_monotrans_TA|simple_monotrans_TI)
-simple_intrans_AI = build_simple_stems(simple_intrans_AI_words, "AI")
-simple_intrans_II = build_simple_stems(simple_intrans_II_words, "II")
-simple_intrans = (simple_intrans_AI|simple_intrans_II)
-
-# stems that alternate based on animacy of the object
-print('\nAlternating stems')
-print('-----------------')
-alternating_words = [w for w in regular_words if w.num_forms>1]
-
-def build_alternating(stem,TI_form,TA_form,AI_form,II_form):
-    # !!! this will need to be fixed if there are any ditransitive
-    # verbs with other, non-ditransitive forms
-    print('stem:', stem)
-    
+def build_regular_stems(glossary_words):
+    TA_ditrans_context = (Ag+bound+Ag+bound+F) @ complement(reflexive)
+    TA_monotrans_context = (Ag+bound+Ag+bound+E) @ complement(reflexive)
     TI_context = Ag+bound+NI+bound+E
-    TA_context = (Ag+bound+Ag+bound+E) @ complement(reflexive)
     AI_context = Ag+bound+E+bound+E
     II_context = NI+bound+E+bound+E
     
-    if TA_form and TI_form and AI_form:
-        print('TA and TI and AI')
-        print('TA_form:',TA_form)
-        print('TI_form:',TI_form)
-        print('AI_form:',AI_form)
-        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
-                (T(stem,AI_form)+del_bound+add_plus+AI_context)|\
-                (T(stem,TA_form)+del_bound+add_plus+TA_context)
-    
-    elif TA_form and TI_form and not AI_form:
-        print('TA and TI')
-        print('TA_form:',TA_form)
-        print('TI_form:',TI_form)
-        TI = (T(stem,TI_form)+del_bound+add_plus+TI_context)
-        alternating = (T(stem,TI_form)+del_bound+add_plus+TI_context)|\
-                    (T(stem,TA_form)+del_bound+add_plus+TA_context)
-        
-    elif AI_form and II_form:
-        print('AI and II')
-        print('AI:', AI_form)
-        print('II:', II_form)
-        alternating = (T(stem,II_form)+del_bound+add_plus+II_context)|\
-                    (T(stem,AI_form)+del_bound+add_plus+AI_context)
-        
-    return alternating.optimize()
-
-def build_alternating_stems(wordlist):
     temp = zero
-    for w in wordlist:
-        print('word:',w.eng_stem)
-        new_T = build_alternating(w.eng_stem,w.alg_TI_stem,w.alg_TA_stem,w.alg_AI_stem,w.alg_II_stem)
-        temp = temp | new_T
-        print()
+    for word in glossary_words:
+        if word.regular_spelling:
+
+            stem_gloss = []
+            if word.TA:
+                stem = T(word.eng_stem,word.TA)
+                if word.transitivity=='ditrans':
+                    stem_gloss.append(stem+del_bound+add_plus+TA_ditrans_context+slash+polarity)
+                if word.transitivity=='monotrans':
+                    stem_gloss.append(stem+del_bound+add_plus+TA_monotrans_context+slash+polarity)
+            if word.TI:
+                stem = T(word.eng_stem,word.TI)
+                stem_gloss.append(stem+del_bound+add_plus+TI_context+slash+polarity)
+            if word.AI:
+                stem = T(word.eng_stem,word.AI)
+                stem_gloss.append(stem+del_bound+add_plus+AI_context+slash+polarity)
+            if word.II:
+                stem = T(word.eng_stem,word.II)
+                stem_gloss.append(stem+del_bound+add_plus+II_context+slash+polarity)
+
+            for sg in stem_gloss:
+                temp = temp|sg
+    return temp
+
+regular_stems = build_regular_stems(glossary_words)
+
+# irregular stems
+mis_context = (twoSP+bound+oneSP+bound+F) # implicitly rules out reflexives
+mir_context = complement(mis_context) @ (Ag+bound+Ag+bound+F) @ complement(reflexive)
+mis = T('give','mis')+del_bound+add_plus+mis_context
+mir = T('give','mir')+del_bound+add_plus+mir_context
+mis_mir = ((mis|mir)+slash+polarity).optimize()
+irreg_stems = mis_mir
+
+stems = regular_stems|irreg_stems
+
+### functions for building morpheme transducers
+def build_context_transducer(sub,prim_o,sec_o,polar=polarity,to_suf='',separate=plus,lang='alg'):
+    temp = sub+bound+prim_o+bound+sec_o+slash+polar+other_morphemes
+    if to_suf != '':
+        temp = temp + add_plus + T('',to_suf)
     return temp.optimize()
 
-alternating_stems = build_alternating_stems(alternating_words)
+def build_morpheme_transducer(to_union):
+    middle = zero
+    for machine in to_union:
+        middle = middle|machine
+    return (other_morphemes+plus+middle).optimize()
+    
+#############
+# theme signs
+#############
 
-stems = (irreg_stems | simple_ditrans | simple_monotrans | simple_intrans | alternating_stems).optimize()
+# add -u if 2.1.FE
+themesign_u = build_context_transducer((twoSP|weinc),oneSP,FE,to_suf='u')
+
+# add -ur if 1.2.FE
+themesign_ur = build_context_transducer(oneSP,(twoSP|weinc),FE,to_suf='ur')
+
+# add -ô if F.3.FE
+themesign_o = build_context_transducer(F,NA,FE,to_suf='ô')
+
+# add -uko if 3.F.FE and not F.3.FE
+themesign_uko = build_context_transducer(threeSP,(F-threeSP),FE,to_suf='uko')
+
+# add no theme sign if F.E.E or F.N.E
+themesign_none = build_context_transducer(F,(NI|E),E,)
+
+theme_sign = build_morpheme_transducer([themesign_u,themesign_ur,themesign_o,
+                                        themesign_uko,themesign_none])
+
+##########
+# negation
+##########
+
+negative_config = build_context_transducer(F,FE,FE,negative)
+
+# add -ow if the last letter is a consonant
+algneg_ow_context = negative_config @ (sigmaStar+alg_consonant)
+algneg_ow = algneg_ow_context+T('','+ow')
+
+# add -w if the last letter is a vowel
+algneg_w_context = (negative_config@complement(algneg_ow_context))
+algneg_w = algneg_w_context+T('','+w')
+
+# add nothing if the word is positive
+algneg_none = build_context_transducer(F,FE,FE,positive)
+
+alg_negation = build_morpheme_transducer([algneg_ow,algneg_w,algneg_none])
 
 ################
 # central suffix
 ################
-print('generating central suffix machines')
 
-# N if there are 3 visible args: V V V
-# OR if it's monotransitive with def NI obj:
-    # V DN(SP) ?? or F DN(SP) going with F DN(SP) for now
-        # need to know centsuf for (indefNA defNI empty) i.e. 'IAS.2P.E'
-centsuf_N1 = V+bound+V+bound+V
-centsuf_N2 = F+bound+DNSP+bound+X
+# N if:
+    # there are three visible args                        # V.V.V
+    # OR it's monotransitive with a def NI primary object # F.DNSP.E
+    ## note that F.DNSP.X3 is not a legal configuration, so # F.DNSP.E is sufficient
+    ## !! open question: is IASP.DNSP.E still an N? !! for now, yes
+    
+centsuf_N1 = build_context_transducer(V,V,V,)
+centsuf_N2 = build_context_transducer(F,DNSP,E)
 centsuf_N = (centsuf_N1|centsuf_N2).optimize()+T('','+ná')
 
-# W if there is one+ invisible arg and one def (V X)|(X V) and not N2
-# OR all invisible: X X X
-#centsuf_W1 = sigmaStar+V3+sigmaStar+X+sigmaStar
-centsuf_W1 = complement(centsuf_N2) @ (sigmaStar+V3+sigmaStar+X+sigmaStar)
-centsuf_W2 = complement(centsuf_N2) @ (sigmaStar+X+sigmaStar+V3+sigmaStar)
-centsuf_W3 = sigmaStar+X+bound+X+bound+X
-centsuf_W = complement(sigmaStar+plus+centsuf_N2) @ (centsuf_W1|centsuf_W2|centsuf_W3).optimize()+T('','+w')
-# is this the best way to do this?
+# W if it doesn't fit the N conditions
+    # AND there is one visible and one invisible          # (V X)|(X V)
+    # OR if all arguments are invisible                   # X.X.X
+centsuf_W1 = ((any_config-(centsuf_N1|centsuf_N2)) @ has_both(V3,X))+other_morphemes
+centsuf_W2 = build_context_transducer(X,X,X)
+centsuf_W = (centsuf_W1|centsuf_W2).optimize()+T('','+w')
+    
+# M if the only visible args are speech act participants  # ym.(X|ym).X or X.ym.X
+    # AND there is at least one speech act participant    
+centsuf_M = (any_config @ complement(has(V3)) @ has(ym))+other_morphemes+T('','+m')
 
-# M if there are only 1/2 arguments; i.e. comp(has_3)
-has_V3 = has(V3)
-centsuf_M = (complement(centsuf_W3) @ complement(has_V3)).optimize()+T('','+m')
-
-centsuf = sigmaStar+plus+(centsuf_N|centsuf_W|centsuf_M).optimize()
+centsuf = build_morpheme_transducer([centsuf_N,centsuf_W,centsuf_M])
 
 ########
 # prefix
 ########
-print('generating prefix machines')
 
-# get ku if a 2nd-person arg is involved
-has_2 = has(two)
-prefix_ku = T('','ku+') + has_2
+# may come back to this to figure out how to build prefixing into build_context_transducer()
 
-# get nu if there's no 2nd-person but there is a 1st-person
-has_1 = has(one)
-prefix_nu = T('','nu+') + (complement(has_2) @ has_1)
+# add ku- if there's a 2nd-person argument (including weinc)
+prefix_ku1 = build_context_transducer((twoSP|weinc),FE,FE)
+prefix_ku2 = build_context_transducer(F,(twoSP|weinc),FE)
+prefix_ku = T('','ku+')+other_morphemes+plus+(prefix_ku1|prefix_ku2).optimize()
 
-# get no prefix if it's 3rd-person intransitive
-prefix_none = sigmaStar+threeSP+bound+E+bound+E+sigmaStar
 
-# get wu if there's no 2nd- or 1st- person, and it's not 3rd-person intransitive
-prefix_wu = complement(prefix_none) @ (T('','wu+') + (complement(has_2) @ complement(has_1))).optimize()
+# add nu- if there's no 2nd-person but there is a 1st-person argument
+prefix_nu1 = build_context_transducer(oneSP,FE,FE) @ complement(prefix_ku2)
+prefix_nu2 = build_context_transducer(F,oneSP,FE) @ complement(prefix_ku1)
+prefix_nu = T('','nu+')+other_morphemes+plus+(prefix_nu1|prefix_nu2).optimize()
 
-# exceptions: some stems that don't get prefixes
-# still don't know if this is a productive exception?
-#prefix_exceptions = project(A('apu')+sigmaStar,'input')
-#regular_prefix = (sigmaStar - prefix_exceptions).optimize()
+# add wu- if there's no 2nd- or 1st-person argument but there is a 3rd-person; and the stem doesn't start with 'a'
+prefix_wu = T('','wu+')+(alg_con_or_vow-(A('a')|A('ô')|A('w')))+other_morphemes+plus+build_context_transducer(threeSP,(threeSP|E),FE)
 
-#prefix = (prefix_exceptions | (regular_prefix @ (prefix_ku|prefix_nu|prefix_wu))).optimize()
+# add none if wu but stem starts with 'a'
+prefix_none = (A('a')|A('ô')|A('w'))+other_morphemes+plus+build_context_transducer(threeSP,(threeSP|E),FE)
+
 prefix = (prefix_ku|prefix_nu|prefix_wu|prefix_none).optimize()
 
 ######################
 # personal pluralizers
 ######################
-print('generating personal pluralizers machines')
 
-# get non if it has 1P or 12P
-# since 1Pl will never show up in B, can just search whole string for it:
-has_1P = has(oneP)
-has_weinc = has(weinc)
-#pp_non = has_1P + add_plus+T('','nôn')
-pp_non = (has_1P|has_weinc) + add_plus+T('','nôn')
+# add -nôn if there's a plural first person (including we-inc)
+pp_non1 = build_context_transducer((oneP|weinc),FE,FE)
+pp_non2 = build_context_transducer(F,(oneP|weinc),FE)
+pp_non = (pp_non1|pp_non2).optimize() + T('','+nôn')
 
-# get wow if it doesn't have 1P but does have 2P (but not 12P) or [3AP and one other arg], not counting arg B.
-has_2P = has(twoP)
-threeAP = (DAP|IAP).optimize()
-pp_wow1 = has_2P
-pp_wow2 = threeAP+bound+F+bound+FE
-pp_wow3 = F+bound+threeAP+bound+FE
-pp_wow = complement(has_1P|has_weinc) @ (sigmaStar+(pp_wow1|pp_wow2|pp_wow3)+sigmaStar).optimize()+add_plus+T('','wôw')
+# add -wôw if there's a plural second or third person but not a plural second person; and not 3P.E.E
+pp_wow_twoP_1 = build_context_transducer(twoP,FE,FE) @ complement(pp_non2)
+pp_wow_twoP_2 = build_context_transducer(F,twoP,FE) @ complement(pp_non1)
+pp_wow_twoP = (pp_wow_twoP_1|pp_wow_twoP_2).optimize()
 
-# get no personal pluralizer if has no P (not counting last arg) or if intransitive with 3rd-person Pl arg
-has_P = has(P)
-threeNP = (DNP|INP).optimize()
-pp_all_sg = complement(has_P)+bound+(threeSP|E)+plus+sigmaStar
-pp_intrans_3 = sigmaStar+threeP+bound+E+bound+E+plus+sigmaStar
-pp_monotrans_NI = sigmaStar+S+bound+threeNP+bound+E+plus+sigmaStar
-pp_none = (pp_all_sg|pp_intrans_3|pp_monotrans_NI).optimize()
+pp_wow_threeP_1 = build_context_transducer(threeP,F,FE) @ complement(pp_non2)
+pp_wow_threeP_2 = build_context_transducer(F,threeP,FE) @ complement(pp_non1)
+pp_wow_threeP = (pp_wow_threeP_1|pp_wow_threeP_2).optimize()
 
-personal_plural = (pp_wow | pp_non | pp_none).optimize()
+pp_wow = (pp_wow_twoP|pp_wow_threeP)+T('','+wôw')
+
+# add none if there's no plural or if the only plural is 3P.E.E
+pp_none1 = any_config @ complement(has(P))+other_morphemes
+pp_none2 = build_context_transducer(threeP,E,E)
+pp_none = (pp_none1|pp_none2).optimize()
+
+personal_plural = build_morpheme_transducer([pp_non,pp_wow,pp_none])
 
 #############
-# theme signs
+# Peripherals
 #############
-print('generating theme signs machines')
 
-u = T('','u')
-uru = T('','uru')
-uko = T('','uko')
-on = T('','ô')
+###################
+# object pluralizer
 
-# u if 2.1.FE
-ts_u = (twoSP|weinc)+bound+oneSP+bound+FE+add_plus+u
+# add -ak if the outermost argument is a plural inanimate NA (!! open question: does it have to be definite?? !!)
+op_ak_ditran = build_context_transducer(F,F,DAP)
+op_ak_monotran = build_context_transducer(F,DAP,E)
+op_ak_intran = build_context_transducer(DAP,E,E)
+op_ak_conditions = (op_ak_ditran|op_ak_monotran|op_ak_intran).optimize()
+op_ak = op_ak_conditions+T('','+ak')
 
-# uru if 1.2.FE
-ts_uru = oneSP+bound+(twoSP|weinc)+bound+FE+add_plus+uru
+# add -ash if the absolutive argument is a plural inanimate NI
+op_ash_ditran = build_context_transducer(F,F,DNP)
+op_ash_monotran = build_context_transducer(F,DNP,E)
+op_ash_intran = build_context_transducer(DNP,E,E)
+op_ash_conditions = (op_ash_ditran|op_ash_monotran|op_ash_intran).optimize()
+op_ash = op_ash_conditions+T('','+ash')
 
-# ô if F.3.FE
-ts_on = F+bound+NA+bound+FE+add_plus+on
+# add none if not these conditions
+op_none = (any_config @ complement(op_ak_conditions) @ complement(op_ash_conditions)) + other_morphemes
 
-# uko if 3.F.FE and not F.3.FE
-ts_uko = threeSP+bound+(F-threeSP)+bound+FE+add_plus+uko
+object_plural = build_morpheme_transducer([op_ak,op_ash,op_none])
 
-# none if F.E.E
-ts_none_1 = F+bound+E+bound+E
-ts_none_2 = F+bound+NI+bound+E
-ts_none = (ts_none_1|ts_none_2).optimize()
+##################
+# obviative marker
 
-theme_sign = (sigmaStar+(ts_u|ts_uru|ts_uko|ts_on|ts_none)+sigmaStar).optimize()
+# add -ah if there are two or more definite animate arguments
+obviative_ah = other_morphemes+plus+(any_config @ has_two(DASP))+other_morphemes+T('','+ah')
+
+# add none if there are not two or more definite animate arguments
+obviative_none = other_morphemes+plus+(any_config @ complement(has_two(DASP)))+other_morphemes
+
+#################
+# peripherals = obviative and object plural; obviative takes precedence
+peripherals = (obviative_ah | (obviative_none @ object_plural)).optimize()
 
 ##############
 # remove gloss from final form; this includings reducing ++ to +
 ##############
 
-to_remove = cross((F+bound+FE+bound+FE).project('input'),'')
+to_remove = cross(any_config.project('input'),'')
 reduce_plusses = cdrewrite(T('++','+'),sigmaStar,sigmaStar,sigmaStar)
 remove_gloss = cdrewrite(cross(to_remove,''), plus, plus, sigmaStar) @ reduce_plusses
-
-# peripheral suffixes: the object pluralizer and the obviative marker
-# which one takes precedence?
-
-###################
-# object pluralizer
-###################
-print('generating object pluralizer machines')
-
-# ak if centsuf is not M (requirements of DAP below takes care of this) AND
-op_ak_ditran = DAP+plus # ditransitive and objB is DAP
-op_ak_mntran = DAP+bound+E+plus # monotransitive and objA is DAP
-op_ak_intran = DAP+bound+E+bound+E+plus # intransitive and sub is DAP
-op_ak_conditions = (sigmaStar+(op_ak_ditran|op_ak_mntran|op_ak_intran)+sigmaStar).optimize()
-op_ak = op_ak_conditions + add_plus + T('','ak')
-
-# ash if centsuf is not M (requirements of DAP below takes care of this) AND
-op_ash_ditran = DNP+plus # ditransitive and objB is DNP
-op_ash_mntran = DNP+bound+E+plus # monotransitive and objA is DNP
-op_ash_intran = DNP+bound+E+bound+E+plus # intransitive and sub is DNP
-op_ash_conditions = (sigmaStar+(op_ash_ditran|op_ash_mntran|op_ash_intran)+sigmaStar).optimize()
-op_ash = op_ash_conditions + add_plus + T('','ash')
-
-# none if not these conditions
-op_none = (complement(op_ak_conditions)@complement(op_ash_conditions))
-
-object_plural = (op_ak|op_ash|op_none).optimize()
-
-##################
-# obviative marker
-##################
-print('generating obviative marker machines')
-
-# ah if centsuf is not M AND there are two or more DASP
-# there must be a better way to do this
-# implicity applies the condition that centsuf can't be M because DASP is required
-has_three_DASPs = has(DASP+sigmaStar+DASP+sigmaStar+DASP)
-has_two_DASPs = has(DASP+sigmaStar+DASP)
-obviative_ah = (has_three_DASPs|(complement(has_three_DASPs)@has_two_DASPs))+add_plus+T('','ah')
-
-# none if not these conditions
-obviative_none = complement(has(DASP+sigmaStar+DASP))
-
-obviative = (obviative_ah|obviative_none).optimize()
-
-# if obviative takes precedence:
-peripherals = (obviative_ah | (obviative_none @ object_plural)).optimize()
-
-# if object_plural takes precedence:
-# peripherals = (object_plural | (complement(object_plural) @ obviative)).optimize()
 
 ##############################
 # phonology and spelling rules
 ##############################
-print('generating phonology and spelling rules machines')
 
 # first remove plusses
 remove_plusses = cdrewrite(T('+',''),sigmaStar,sigmaStar,sigmaStar)
 
+###########
+# insertion: intrusive t, u-bridge, i-bridge
 
-# insertion processes: intrusive t and u-bridge
-# insert a t between u and a
-intrusive_t = cdrewrite(T('','t'), A('u'), A('a'), sigmaStar)
+# intrusive t: insert a 't' between 'u' and 'a'
+intrusive_t = cdrewrite(T('','t'), A('u'), alg_vowel, sigmaStar)
 
-# insert a u in: mn, mw, wn, ww
-u_bridge = cdrewrite(u,A('m')|A('w')|A('s'),A('n')|A('w')|A('m'),sigmaStar) # it might be more productive than this?...
-# not sure whether ww should be handled as wuw or w; see ku+mir+uko+w+wôw=kumirukowuw vs ku+mir+ô+w+wôw=kumirôw
+# u-bridge: insert a 'u' in: mn, mw, wn, ww
+u_bridge = cdrewrite(T('','u'),A('m')|A('w')|A('s')|A('r')|A('k'),A('n')|A('w')|A('m'),sigmaStar) # it might be more productive than this?...
+    # not sure whether ww should be handled as wuw or w; see ku+mir+uko+w+wôw=kumirukowuw vs ku+mir+ô+w+wôw=kumirôw
+
+# i-bridge: insert an 'i' in 
 i_bridge = cdrewrite(T('','i'),A('c'),A('n'),sigmaStar)
 
 insertion = (intrusive_t @ u_bridge @ i_bridge)
 
+############
+# truncation: no double a, delete final a, delete final ôn, delete final ôw, word-final uq, word final r->sh
+
+# no double a
 no_double_a = cdrewrite(T('áa','a'),sigmaStar,sigmaStar,sigmaStar)
 no_doubles = no_double_a #@ no_double_w
 
@@ -644,7 +525,7 @@ truncate_final_nonn = cdrewrite(T('ôn',''),'n','[EOS]',sigmaStar)
 truncate_final_wonw = cdrewrite(T('ôw',''),'w','[EOS]',sigmaStar) # need to figure out when wonw and nonw truncation happens
 truncate_final_w = cdrewrite(T('w',''),'t','[EOS]',sigmaStar)
 
-truncation = (truncate_final_nonn @ truncate_final_wonw @ delete_final_a @ delete_final_um).optimize()
+truncation = (truncate_final_nonn @ truncate_final_wonw @ delete_final_a @ delete_final_um @ truncate_final_w).optimize()
 
 # change 'uko+m' to 'uq'
 kom_to_q = cdrewrite(T('ko+m','q'),sigmaStar,'[EOS]',sigmaStar)
@@ -664,10 +545,10 @@ phon_n_spell = (truncate_uko @ remove_plusses @ insertion @ no_doubles @ truncat
 print('\nGenerating and saving gloss/alg/analysis machines')
 print('-------------------------------------------------')
 
-lib_path = path_to_project+'/lib/'
+lib_path = './lib/'
 
 # machines to translate between gloss and analysis
-gloss2analysis_machine = (stems @ centsuf @ prefix @ personal_plural @ theme_sign @ peripherals @ remove_gloss).optimize()
+gloss2analysis_machine = (stems @ theme_sign @ alg_negation @ centsuf @ prefix @ personal_plural @ peripherals @ remove_gloss).optimize()
 print('generated gloss2analysis_machine')
 gloss2analysis_machine.write(lib_path+'gloss2analysis.fst')
 print('saved gloss2analysis.fst')
@@ -699,6 +580,24 @@ print('generated alg2gloss_machine')
 alg2gloss_machine.write(lib_path+'alg2gloss.fst')
 print('saved alg2gloss.fst')
 
+def gloss2analysis(text):
+    return apply_machine(gloss2analysis_machine,text)
+def gloss2alg(text):
+    return apply_machine(gloss2alg_machine,text)
+
+def list_string_set(acceptor):
+    my_list = []
+    paths = acceptor.paths()
+    for s in paths.ostrings():
+        my_list.append(s)
+    my_list.sort(key=len)
+    return my_list
+
+def apply_machine(machine, text):
+    try:
+        return (A(text) @ machine).string(token_type='utf8')
+    except:
+        return list_string_set(A(text) @ machine)
 
 ###########################
 ##### Build gloss2eng #####
@@ -709,140 +608,170 @@ print('--------------------')
 #######
 # stems
 #######
-print('Generating English stems machine')
 
-eng_stems_from_glossary = [l.split('\t')[0] for l in glossary]
-def build_eng_stems(words:list):
+eng_stems_from_glossary = [w.eng_stem for w in glossary_words]
+def build_eng_stems(words):
     temp = zero
     for w in words: temp = A(w)|temp
     return temp.optimize()
 eng_stem = build_eng_stems(eng_stems_from_glossary)
 
+valid_gloss = eng_stem+bound+any_config
+
+def build_eng_sentence(sub,prim_o,sec_o,eng=None,pol=polarity,before_stem=True):
+    if eng:
+        if before_stem:
+            return (T('',eng)+add_space+other_eng+eng_stem+other_eng+bound+sub+bound+prim_o+bound+sec_o+slash+pol).optimize()
+        return (other_eng+eng_stem+other_eng+add_space+T('',eng)+bound+sub+bound+prim_o+bound+sec_o+slash+pol).optimize()
+    return (other_eng+space+eng_stem+other_eng+bound+sub+bound+prim_o+bound+sec_o+slash+pol).optimize()
+
 #########
 # subject
 #########
-print('Generating English subject machine')
-subject_filler_it = eng_stem
-subject_filler_mt = eng_stem+space+prim_obj_engs_obj
-subject_filler_dt = eng_stem+space+prim_obj_engs_obj+space+threeSP_eng
-subject_filler = (subject_filler_it|subject_filler_mt|subject_filler_dt).optimize()
+subject_1S = build_eng_sentence(oneS,FE,FE,'i')
+subject_1P = build_eng_sentence(oneP,FE,FE,'we')
+subject_12P = build_eng_sentence(weinc,FE,FE,'we-inc')
+subject_1 = (subject_1S|subject_1P|subject_12P).optimize()
 
-# you -> 2S
-sub_2S = T('you ','')+subject_filler+T('','.2S.')
-sub_2P = T('yall ','')+subject_filler+T('','.2P.')
-sub_2 = (sub_2S|sub_2P).optimize()
+subject_2S = build_eng_sentence(twoS,FE,FE,'you')
+subject_2P = build_eng_sentence(twoP,FE,FE,'yall')
+subject_2 = (subject_2S|subject_2P).optimize()
 
-# I -> 1S
-sub_1S = T('i ','')+subject_filler+T('','.1S.')
-sub_1P = T('we ','')+subject_filler+T('','.1P.')
-sub_1 = (sub_1S|sub_1P).optimize()
+subject_DAS = build_eng_sentence(DAS,FE,FE,'that na')
+subject_DAP = build_eng_sentence(DAP,FE,FE,'those nas')
+subject_DNS = build_eng_sentence(DNS,FE,FE,'that ni')
+subject_DNP = build_eng_sentence(DNP,FE,FE,'those nis')
+subject_IAS = build_eng_sentence(IAS,FE,FE,'a na')
+subject_IAP = build_eng_sentence(IAP,FE,FE,'some nas')
+subject_INS = build_eng_sentence(INS,FE,FE,'a ni')
+subject_INP = build_eng_sentence(INP,FE,FE,'some nis')
+subject_3 = (subject_DAS|subject_DAP|subject_DNS|subject_DNP|
+             subject_IAS|subject_IAP|subject_INS|subject_INP)
 
-sub_12P = T('we-inc ','')+subject_filler+T('','.12P.')
-
-# 3rd person
-sub_DNS = T('that ni ','')+subject_filler+T('','.DNS.')
-sub_DNP = T('those nis ','')+subject_filler+T('','.DNP.')
-sub_INS = T('some ni ','')+subject_filler+T('','.INS.')
-sub_INP = T('some nis ','')+subject_filler+T('','.INP.')
-sub_DAS = T('that na ','')+subject_filler+T('','.DAS.')
-sub_DAP = T('those nas ','')+subject_filler+T('','.DAP.')
-sub_IAS = T('a na ','')+subject_filler+T('','.IAS.')
-sub_IAP = T('some nas ','')+subject_filler+T('','.IAP.')
-
-sub_3 = (sub_DNS|sub_DNP|sub_INS|sub_INP|sub_DAS|sub_DAP|sub_IAS|sub_IAP).optimize()
-
-subject = (sub_2|sub_1|sub_12P|sub_3).optimize()
+subject = (subject_1|subject_2|subject_3).optimize()
 
 ################
 # primary object
 ################
-print('Generating English primary object machine')
 
-prim_obj_filler_mit = bound+F+bound
-prim_obj_filler_dt = del_space+(threeSP_eng+bound+F+bound).optimize()
-prim_obj_filler = (prim_obj_filler_dt|prim_obj_filler_mit).optimize()
+prim_obj_none = build_eng_sentence(F,E,FE)
 
-prim_obj_it = eng_stem+prim_obj_filler_mit+T('','E')
+prim_obj_1S = build_eng_sentence(F,oneS,FE,'me',before_stem=False)
+prim_obj_1P = build_eng_sentence(F,oneP,FE,'us',before_stem=False)
+prim_obj_12P = build_eng_sentence(F,weinc,FE,'us-inc',before_stem=False)
+prim_obj_1 = (prim_obj_1S|prim_obj_1P|prim_obj_12P).optimize()
 
-prim_obj_2S_dt = eng_stem+space+T('you','')+prim_obj_filler_dt+T('','2S')
-prim_obj_2S_mt = eng_stem+del_space+T('you','')+prim_obj_filler_mit+T('','2S')
-prim_obj_2S = (prim_obj_2S_mt|prim_obj_2S_dt).optimize()
-
-prim_obj_2P_dt = eng_stem+space+T('yall','')+prim_obj_filler_dt+T('','2P')
-prim_obj_2P_mt = eng_stem+space+T('yall','')+prim_obj_filler+T('','2P')
-prim_obj_2P = (prim_obj_2P_mt|prim_obj_2P_dt).optimize()
-
+prim_obj_2S = build_eng_sentence(F,twoS,FE,'you',before_stem=False)
+prim_obj_2P = build_eng_sentence(F,twoP,FE,'yall',before_stem=False)
 prim_obj_2 = (prim_obj_2S|prim_obj_2P).optimize()
 
-prim_obj_1S_dt = eng_stem+space+T('me','')+prim_obj_filler+T('','1S')
-prim_obj_1S_mt = eng_stem+del_space+T('me','')+prim_obj_filler_mit+T('','1S')
-prim_obj_1S = (prim_obj_1S_mt|prim_obj_1S_dt).optimize()
+prim_obj_DAS = build_eng_sentence(F,DAS,FE,'that na',before_stem=False)
+prim_obj_DAP = build_eng_sentence(F,DAP,FE,'those nas',before_stem=False)
+prim_obj_DNS = build_eng_sentence(F,DNS,FE,'that ni',before_stem=False)
+prim_obj_DNP = build_eng_sentence(F,DNP,FE,'those nis',before_stem=False)
+prim_obj_IAS = build_eng_sentence(F,IAS,FE,'a na',before_stem=False)
+prim_obj_IAP = build_eng_sentence(F,IAP,FE,'some nas',before_stem=False)
+prim_obj_INS = build_eng_sentence(F,INS,FE,'a ni',before_stem=False)
+prim_obj_INP = build_eng_sentence(F,INP,FE,'some nis',before_stem=False)
+prim_obj_3 = (prim_obj_DAS|prim_obj_DAP|prim_obj_DNS|prim_obj_DNP|
+              prim_obj_IAS|prim_obj_IAP|prim_obj_INS|prim_obj_INP).optimize()
 
-prim_obj_1P_dt = eng_stem+space+T('us','')+prim_obj_filler+T('','1P')
-prim_obj_1P_mt = eng_stem+space+T('us','')+prim_obj_filler+T('','1P')
-prim_obj_1P = (prim_obj_1P_mt|prim_obj_1P_dt).optimize()
-
-prim_obj_1 = (prim_obj_1S|prim_obj_1P).optimize()
-
-prim_obj_12P = eng_stem+space+T('us-inc','')+prim_obj_filler+T('','12P')
-
-prim_obj_DNS = eng_stem+space+T('that ni','')+prim_obj_filler+T('','DNS')
-prim_obj_DNP = eng_stem+space+T('those nis','')+prim_obj_filler+T('','DNP')
-prim_obj_DAS = eng_stem+space+T('that na','')+prim_obj_filler+T('','DAS')
-prim_obj_DAP = eng_stem+space+T('those nas','')+prim_obj_filler+T('','DAP')
-prim_obj_INS = eng_stem+space+T('a ni','')+prim_obj_filler+T('','INS')
-prim_obj_INP = eng_stem+space+T('some nis','')+prim_obj_filler+T('','INP')
-prim_obj_IAS = eng_stem+space+T('a na','')+prim_obj_filler+T('','IAS')
-prim_obj_IAP = eng_stem+space+T('some nas','')+prim_obj_filler+T('','IAP')
-prim_obj_3 = (prim_obj_DNS|prim_obj_DNP|prim_obj_DAS|prim_obj_DAP|prim_obj_INS|prim_obj_INP|prim_obj_IAS|prim_obj_IAP).optimize()
-
-prim_obj = (prim_obj_2|prim_obj_1|prim_obj_12P|prim_obj_3|prim_obj_it).optimize()
+primary_object = (prim_obj_none|prim_obj_1|prim_obj_2|prim_obj_3).optimize()
 
 ##################
 # secondary object
 ##################
-print('Generating English secondary object machine')
 
-FEFE = bound+FE+bound+FE
-sec_obj_none = eng_stem+(del_space|A(''))+FEFE+T('','.E')
-sec_obj_DNS = eng_stem+(T(' that ni',''))+FEFE+T('','.DNS')
-sec_obj_DNP = eng_stem+(T(' those nis',''))+FEFE+T('','.DNP')
-sec_obj_DAS = eng_stem+(T(' that na',''))+FEFE+T('','.DAS')
-sec_obj_DAP = eng_stem+(T(' those nas',''))+FEFE+T('','.DAP')
-sec_obj_INS = eng_stem+(T(' a ni',''))+FEFE+T('','.INS')
-sec_obj_INP = eng_stem+(T(' some nis',''))+FEFE+T('','.INP')
-sec_obj_IAS = eng_stem+(T(' a na',''))+FEFE+T('','.IAS')
-sec_obj_IAP = eng_stem+(T(' some nas',''))+FEFE+T('','.IAP')
-sec_obj = (sec_obj_none|sec_obj_DNS|sec_obj_DNP|sec_obj_DAS|sec_obj_DAP|sec_obj_INS|sec_obj_INP|sec_obj_IAS|sec_obj_IAP).optimize()
+sec_obj_none = build_eng_sentence(F,FE,E)
 
-###########################
-# English output formatting
-###########################
-print('Generating English output formatting machine')
+sec_obj_1S = build_eng_sentence(F,FE,oneS,'me',before_stem=False)
+sec_obj_1P = build_eng_sentence(F,FE,oneP,'us',before_stem=False)
+sec_obj_12P = build_eng_sentence(F,FE,oneP,'us-inc',before_stem=False)
+sec_obj_1 = (sec_obj_1S|sec_obj_1P).optimize()
+
+sec_obj_2S = build_eng_sentence(F,FE,twoS,'you',before_stem=False)
+sec_obj_2P = build_eng_sentence(F,FE,twoP,'yall',before_stem=False)
+sec_obj_2 = (sec_obj_2S|sec_obj_2P).optimize()
+
+sec_obj_DAS = build_eng_sentence(F,FE,DAS,'that na',before_stem=False)
+sec_obj_DAP = build_eng_sentence(F,FE,DAP,'those nas',before_stem=False)
+sec_obj_DNS = build_eng_sentence(F,FE,DNS,'that ni',before_stem=False)
+sec_obj_DNP = build_eng_sentence(F,FE,DNP,'those nis',before_stem=False)
+sec_obj_IAS = build_eng_sentence(F,FE,IAS,'a na',before_stem=False)
+sec_obj_IAP = build_eng_sentence(F,FE,IAP,'some nas',before_stem=False)
+sec_obj_INS = build_eng_sentence(F,FE,INS,'a ni',before_stem=False)
+sec_obj_INP = build_eng_sentence(F,FE,INP,'some nis',before_stem=False)
+sec_obj_3 = (sec_obj_DAS|sec_obj_DAP|sec_obj_DNS|sec_obj_DNP|
+             sec_obj_IAS|sec_obj_IAP|sec_obj_INS|sec_obj_INP).optimize()
+
+secondary_object = (sec_obj_none|sec_obj_1|sec_obj_2|sec_obj_3)
+
+##################
+# english negation
+##################
+break_multiword_stems = cdrewrite(T('_',' '),sigmaStar,sigmaStar,sigmaStar)
+eng_stems_with_spaces = (eng_stem @ break_multiword_stems).project('output')
+
+eng_neg_regular = possible_subjects+space+T('','do not ')+(eng_stems_with_spaces-has(A('be ')))+other_eng+bound+F+bound+FE+bound+FE+slash+negative
+eng_neg_be = possible_subjects+space+T('be ','be not ')+other_eng+bound+F+bound+FE+bound+FE+slash+negative
+eng_neg_none = possible_subjects+space+eng_stems_with_spaces+other_eng+bound+F+bound+FE+bound+FE+slash+positive
+
+english_negation = (eng_neg_regular|eng_neg_be|eng_neg_none).optimize()
+
+################
+# english output
+################
+
+remove_gloss = other_eng+cross((bound+F+bound+FE+bound+FE+slash+polarity).project('input'),A(''))
 
 # agreement
-# multiword stems need to have the agreeing 's' on the first word
-split_multiword_stems = cdrewrite(T('_',' '),sigmaStar,sigmaStar-A('inc'),sigmaStar)
-context_stems = project(eng_stem @ split_multiword_stems, "output")
-del_sigmaStar = cross(sigmaStar.project('input'),'')
-no_second_word = ((sigmaStar + T(' ','')+del_sigmaStar)|complement(space)).optimize()
-context_stems = (context_stems @ no_second_word).project('output')
+one_eng_word = closure(newclass(eng_chars))-A('')
+agreement_s_regular = threeSg_subjects+space+one_eng_word+(T('','s')|(T('','s')+space+other_eng))
+agreement_none = (possible_subjects-(threeSg_subjects))+space+(one_eng_word|(one_eng_word+space+other_eng))
 
-agree_context = (A('ni')|A('na'))+space+context_stems
-agreement_s = cdrewrite(T('','s'),agree_context,sigmaStar,sigmaStar)
-irregular_eng_agreement = cdrewrite(T('gos','goes'),sigmaStar,sigmaStar,sigmaStar)
-agreement = agreement_s @ irregular_eng_agreement
+agreement_fix_does = cdrewrite(T('dos','does'),' ',' ',sigmaStar)
+agreement_fix_has = cdrewrite(T('haves','has'),' ',' ',sigmaStar)
+agreement_fix_am = cdrewrite(T('i be','i am'),'[BOS]',sigmaStar,sigmaStar)
+agreement_fix_is = cdrewrite(T('bes','is'),threeSg_subjects+space,sigmaStar,sigmaStar)
+agreement_fix_are = cdrewrite(T('be','are'),are_subjects+space,sigmaStar,sigmaStar)
+agreement_fix_be = (agreement_fix_am@agreement_fix_is@agreement_fix_are).optimize()
+agreement_fix = (agreement_fix_does@agreement_fix_has@agreement_fix_be).optimize()
+
+agreement = ((agreement_s_regular|agreement_none)@agreement_fix).optimize()
+
+# fixing word order
+fix_word_order_none = other_eng@complement(has(A('  ')))
+
+fix_word_order_1S = other_eng+T('  ',' me ')+other_eng+del_space+T('me','')
+fix_word_order_1P = other_eng+T('  ',' us ')+other_eng+del_space+T('us','')
+fix_word_order_weinc = other_eng+T('  ',' us-inc ')+other_eng+del_space+T('us-inc','')
+fix_word_order_1 = (fix_word_order_1S|fix_word_order_1P|fix_word_order_weinc).optimize()
+
+fix_word_order_2S = other_eng+T('  ',' you ')+other_eng+del_space+T('you','')
+fix_word_order_2P = other_eng+T('  ',' yall ')+other_eng+del_space+T('yall','')
+fix_word_order_2 = (fix_word_order_2S|fix_word_order_2P).optimize()
+
+fix_word_order_DAS = other_eng+T('  ',' that na ')+other_eng+del_space+T('that na','')
+fix_word_order_DAP = other_eng+T('  ',' those nas ')+other_eng+del_space+T('those nas','')
+fix_word_order_DNS = other_eng+T('  ',' that ni ')+other_eng+del_space+T('that ni','')
+fix_word_order_DNP = other_eng+T('  ',' those nis ')+other_eng+del_space+T('those nis','')
+fix_word_order_IAS = other_eng+T('  ',' a na ')+other_eng+del_space+T('a na','')
+fix_word_order_IAP = other_eng+T('  ',' some nas ')+other_eng+del_space+T('some nas','')
+fix_word_order_INS = other_eng+T('  ',' a ni ')+other_eng+del_space+T('a ni','')
+fix_word_order_INP = other_eng+T('  ',' some nis ')+other_eng+del_space+T('some nis','')
+fix_word_order_3 = (fix_word_order_DAS|fix_word_order_DAP|fix_word_order_DNS|fix_word_order_DNP|
+                    fix_word_order_IAS|fix_word_order_IAP|fix_word_order_INS|fix_word_order_INP).optimize()
+
+fix_word_order = (fix_word_order_none|fix_word_order_1|fix_word_order_2|fix_word_order_3).optimize()
 
 # capitalization
-capital_i = cdrewrite(T('i','I'), '[BOS]', A(' '), sigmaStar)
-capital_ni = cdrewrite(T('ni','NI'), A(' '), A(''), sigmaStar)
-capital_na = cdrewrite(T('na','NA'), A(' '), A(''), sigmaStar)
-capitalized = T('y','Y')|T('t','T')|T('a','A')|T('w','W')|T('s','S')
-capital_first = cdrewrite(capitalized,'[BOS]', A(''), sigmaStar)
-capital = (capital_i @ capital_ni @ capital_na @ capital_first).optimize()
+cap_map = (T('i','I')|T('w','W')|T('y','Y')|T('t','T')|T('s','S')|T('a','A')).optimize()
+capitalize_initial = cdrewrite(cap_map,'[BOS]',A(''),sigmaStar_w_capitals)
+capitalize_nina = cdrewrite((T('ni','NI')|T('na','NA')),' ',('[EOS]'|space|'s'),sigmaStar_w_capitals)
+capitalize = capitalize_initial@capitalize_nina
 
 # put it all together
-english_output_format = split_multiword_stems @ agreement @ (capital + T('','.'))
+english_formatting = (remove_gloss@agreement@fix_word_order@capitalize).optimize()
 
 #############################
 ## Save gloss/eng machines ##
@@ -851,7 +780,7 @@ print('\nGenerating and saving gloss/eng machines')
 print('----------------------------------------')
 
 # machines to translate between gloss and english
-gloss2eng_machine = (invert(subject @ prim_obj @ sec_obj) @ english_output_format).optimize()
+gloss2eng_machine = (valid_gloss @ subject @ primary_object @ secondary_object @ break_multiword_stems @ english_negation @ english_formatting).optimize()
 print('generated gloss2eng_machine')
 gloss2eng_machine.write(lib_path+'gloss2eng.fst')
 print('saved gloss2eng.fst')
@@ -860,6 +789,12 @@ eng2gloss_machine = invert(gloss2eng_machine).optimize()
 print('generated eng2gloss_machine')
 eng2gloss_machine.write(lib_path+'eng2gloss.fst')
 print('saved eng2gloss.fst')
+
+def gloss2eng(gloss):
+    return apply_machine(gloss2eng_machine,gloss)
+
+def eng2gloss(eng):
+    return apply_machine(eng2gloss_machine,eng)
 
 #############################
 ## Save alg/eng machines ##
@@ -880,3 +815,36 @@ print('generated alg2eng_machine')
 alg2eng_machine.write(lib_path+'alg2eng.fst')
 print('saved alg2eng.fst')
 
+def alg2eng(alg):
+    return apply_machine(alg2eng_machine,alg)
+
+def eng2alg(eng):
+    return apply_machine(eng2alg_machine,eng)
+    
+#######################
+## Build entries.csv ##
+#######################
+all_engs = list_string_set(alg2eng_machine)
+all_glosses = []
+all_algs = []
+
+for eng in all_engs:
+    try:
+        gloss = eng2gloss(eng)
+        all_glosses.append(gloss)
+        alg = eng2alg(eng)
+        all_algs.append(alg)
+    except:
+        print('problem with',eng)
+        
+all_analyses = [gloss2analysis(gloss) for gloss in all_glosses]
+
+entries = pd.DataFrame([all_glosses,all_algs,all_analyses,all_engs]).transpose()
+entries.columns = ['Gloss','Algonquian','Analysis','English']
+
+entries_path = 'entries.csv'
+time = datetime.now()
+with open(entries_path,'w') as f:
+    f.write('Updated {}\n'.format(time))
+entries.to_csv(entries_path, index=False,mode='a')
+print('Wrote resulting entries to',entries_path,'at {}.'.format(time))
